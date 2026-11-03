@@ -45,6 +45,15 @@ public class GameHub(GameStore store) : Hub
             await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementRemoved", sceneId, tokenId);
     }
 
+    // Scene settings are game-wide too, so everyone sees a recalibrated grid.
+    public async Task<Scene?> UpdateSceneGrid(string sceneId, int gridSize, int offsetX, int offsetY)
+    {
+        var scene = await store.UpdateSceneGridAsync(sceneId, gridSize, offsetX, offsetY);
+        if (scene is not null)
+            await Clients.Others.SendAsync("SceneUpdated", scene);
+        return scene;
+    }
+
     // Token properties are game-wide, so every connection hears about them.
     public async Task<Token?> UpdateToken(string tokenId, string name, int hp)
     {

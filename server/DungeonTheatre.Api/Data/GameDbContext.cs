@@ -18,6 +18,9 @@ public class SceneEntity
     public int Width { get; set; }
     public int Height { get; set; }
     public int GridSize { get; set; }
+    public int GridOffsetX { get; set; }
+    public int GridOffsetY { get; set; }
+    public string? ImageUrl { get; set; }
 }
 
 // Composite key: a token appears at most once per scene.

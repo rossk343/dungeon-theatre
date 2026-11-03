@@ -1,46 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
-import { Circle, Layer, Line, Stage, Text } from 'react-konva'
+import { Circle, Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
+import useImage from 'use-image'
+import { createScene, replaceSceneImage } from './api'
+import { NewSceneForm, SceneSettings } from './SceneSettings'
+import type { GameState, GridPreview, Placement, Scene, Token } from './types'
 import './App.css'
 
-interface Token {
-  id: string
-  name: string
-  color: string
-  hp: number
-  maxHp: number
-}
-
-interface Scene {
-  id: string
-  name: string
-  width: number
-  height: number
-  gridSize: number
-}
-
-interface Placement {
-  sceneId: string
-  tokenId: string
-  x: number
-  y: number
-}
-
-interface GameState {
-  scenes: Scene[]
-  tokens: Token[]
-}
-
 const SEND_INTERVAL_MS = 50
+const SIDEBAR_WIDTH = 400
 
-const snap = (v: number, grid: number) => Math.round((v - grid / 2) / grid) * grid + grid / 2
+const snap = (v: number, grid: number, offset: number) =>
+  Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
+
+const byName = (a: Scene, b: Scene) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+
+function MapImage({ scene }: { scene: Scene }) {
+  const [image] = useImage(scene.imageUrl ?? '')
+  if (!scene.imageUrl || !image) return null
+  return <KonvaImage image={image} width={scene.width} height={scene.height} />
+}
 
 function GridLines({ scene }: { scene: Scene }) {
   const lines = []
-  for (let x = 0; x <= scene.width; x += scene.gridSize)
-    lines.push(<Line key={`v${x}`} points={[x, 0, x, scene.height]} stroke="#3a3347" strokeWidth={1} />)
-  for (let y = 0; y <= scene.height; y += scene.gridSize)
-    lines.push(<Line key={`h${y}`} points={[0, y, scene.width, y]} stroke="#3a3347" strokeWidth={1} />)
+  for (let x = scene.gridOffsetX; x <= scene.width; x += scene.gridSize)
+    lines.push(<Line key={`v${x}`} points={[x, 0, x, scene.height]} stroke="rgba(232,224,208,0.35)" strokeWidth={1} />)
+  for (let y = scene.gridOffsetY; y <= scene.height; y += scene.gridSize)
+    lines.push(<Line key={`h${y}`} points={[0, y, scene.width, y]} stroke="rgba(232,224,208,0.35)" strokeWidth={1} />)
   return <>{lines}</>
 }
 
@@ -49,28 +35,50 @@ export default function App() {
   const [tokens, setTokens] = useState<Token[]>([])
   const [placements, setPlacements] = useState<Placement[]>([])
   const [sceneId, setSceneId] = useState<string | null>(null)
+  const [preview, setPreview] = useState<GridPreview | null>(null)
   const [status, setStatus] = useState('connecting')
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth)
   const connection = useRef<HubConnection | null>(null)
   const sceneRef = useRef<string | null>(null)
   const lastSent = useRef(0)
 
-  const scene = scenes.find((s) => s.id === sceneId) ?? null
+  const savedScene = scenes.find((s) => s.id === sceneId) ?? null
+  // The preview only applies to the scene it was made for.
+  const scene: Scene | null =
+    savedScene && preview?.sceneId === savedScene.id ? { ...savedScene, ...preview } : savedScene
+  const fit = scene ? Math.min(1, Math.max(0.2, (viewportWidth - SIDEBAR_WIDTH) / scene.width)) : 1
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const joinScene = useCallback(async (id: string) => {
     const conn = connection.current
     if (!conn) return
     sceneRef.current = id
     setSceneId(id)
+    setPreview(null)
     const list = await conn.invoke<Placement[]>('JoinScene', id)
     // Ignore the reply if the user already switched again.
     if (sceneRef.current === id) setPlacements(list)
+  }, [])
+
+  const applyScene = useCallback((s: Scene) => {
+    setScenes((prev) =>
+      prev.some((x) => x.id === s.id) ? prev.map((x) => (x.id === s.id ? s : x)) : [...prev, s].sort(byName),
+    )
+    setPreview((p) => (p?.sceneId === s.id ? null : p))
   }, [])
 
   useEffect(() => {
     const conn = new HubConnectionBuilder().withUrl('/hubs/game').withAutomaticReconnect().build()
     connection.current = conn
 
-    const upsert = (p: Placement) => {
+    const upsertPlacement = (p: Placement) => {
       if (p.sceneId !== sceneRef.current) return
       setPlacements((prev) =>
         prev.some((x) => x.tokenId === p.tokenId)
@@ -79,12 +87,14 @@ export default function App() {
       )
     }
 
-    conn.on('PlacementMoved', upsert)
-    conn.on('PlacementAdded', upsert)
+    conn.on('PlacementMoved', upsertPlacement)
+    conn.on('PlacementAdded', upsertPlacement)
     conn.on('PlacementRemoved', (sid: string, tokenId: string) => {
       if (sid === sceneRef.current) setPlacements((prev) => prev.filter((p) => p.tokenId !== tokenId))
     })
     conn.on('TokenUpdated', (t: Token) => setTokens((prev) => prev.map((p) => (p.id === t.id ? t : p))))
+    conn.on('SceneAdded', applyScene)
+    conn.on('SceneUpdated', applyScene)
 
     // Initial load and reconnect both rejoin the current scene.
     const load = async () => {
@@ -104,10 +114,41 @@ export default function App() {
     return () => {
       void conn.stop()
     }
-  }, [joinScene])
+  }, [joinScene, applyScene])
 
   const invoke = (method: string, ...args: unknown[]) =>
     connection.current?.invoke(method, ...args).catch(() => {})
+
+  const runUpload = async (action: () => Promise<Scene>): Promise<Scene | null> => {
+    setUploading(true)
+    setError(null)
+    try {
+      const s = await action()
+      applyScene(s)
+      return s
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed.')
+      return null
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleCreate = async (name: string, file: File) => {
+    const s = await runUpload(() => createScene(name, file))
+    if (s) await joinScene(s.id)
+    return s !== null
+  }
+
+  const handleReplaceImage = (file: File) => {
+    if (savedScene) void runUpload(() => replaceSceneImage(savedScene.id, file))
+  }
+
+  const saveGrid = (gridSize: number, offsetX: number, offsetY: number) => {
+    if (!savedScene) return
+    applyScene({ ...savedScene, gridSize, gridOffsetX: offsetX, gridOffsetY: offsetY })
+    void invoke('UpdateSceneGrid', savedScene.id, gridSize, offsetX, offsetY)
+  }
 
   const move = (tokenId: string, x: number, y: number) => {
     setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? { ...p, x, y } : p)))
@@ -116,8 +157,8 @@ export default function App() {
 
   const addToScene = (tokenId: string) => {
     if (!scene) return
-    const x = snap(scene.width / 2, scene.gridSize)
-    const y = snap(scene.height / 2, scene.gridSize)
+    const x = snap(scene.width / 2, scene.gridSize, scene.gridOffsetX)
+    const y = snap(scene.height / 2, scene.gridSize, scene.gridOffsetY)
     setPlacements((prev) => [...prev, { sceneId: scene.id, tokenId, x, y }])
     void invoke('AddPlacement', scene.id, tokenId, x, y)
   }
@@ -155,8 +196,15 @@ export default function App() {
       </header>
       <main>
         {scene && (
-          <Stage width={scene.width} height={scene.height} className="stage">
+          <Stage
+            width={scene.width * fit}
+            height={scene.height * fit}
+            scaleX={fit}
+            scaleY={fit}
+            className="stage"
+          >
             <Layer listening={false}>
+              <MapImage key={scene.imageUrl ?? 'none'} scene={scene} />
               <GridLines scene={scene} />
             </Layer>
             <Layer>
@@ -181,8 +229,8 @@ export default function App() {
                       void invoke('MovePlacement', scene.id, p.tokenId, e.target.x(), e.target.y())
                     }}
                     onDragEnd={(e) => {
-                      const x = snap(e.target.x(), scene.gridSize)
-                      const y = snap(e.target.y(), scene.gridSize)
+                      const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX)
+                      const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY)
                       e.target.position({ x, y })
                       move(p.tokenId, x, y)
                     }}
@@ -202,6 +250,8 @@ export default function App() {
                     text={`${t.name} ${t.hp}/${t.maxHp}`}
                     fill="#e8e0d0"
                     fontSize={12}
+                    shadowColor="black"
+                    shadowBlur={4}
                     listening={false}
                   />
                 )
@@ -210,17 +260,35 @@ export default function App() {
           </Stage>
         )}
         <aside>
-          <h2>Tokens</h2>
-          {tokens.map((t) => (
-            <TokenRow
-              key={t.id}
-              token={t}
-              onScene={placed.has(t.id)}
-              onSave={saveToken}
-              onAdd={() => addToScene(t.id)}
-              onRemove={() => removeFromScene(t.id)}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          {savedScene && (
+            <SceneSettings
+              key={`${savedScene.id}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
+              scene={savedScene}
+              busy={uploading}
+              onPreview={setPreview}
+              onSave={saveGrid}
+              onReplaceImage={handleReplaceImage}
             />
-          ))}
+          )}
+          <NewSceneForm busy={uploading} onCreate={handleCreate} />
+          <section className="panel">
+            <h2>Tokens</h2>
+            {tokens.map((t) => (
+              <TokenRow
+                key={t.id}
+                token={t}
+                onScene={placed.has(t.id)}
+                onSave={saveToken}
+                onAdd={() => addToScene(t.id)}
+                onRemove={() => removeFromScene(t.id)}
+              />
+            ))}
+          </section>
         </aside>
       </main>
     </div>

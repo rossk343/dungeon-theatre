@@ -71,11 +71,90 @@ main {
 }
 
 aside {
-  min-width: 320px;
+  width: 360px;
+  flex: none;
 }
 
 aside h2 {
   margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.panel {
+  background: #1a1622;
+  border: 1px solid #3a3347;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.panel input:not([type='file']) {
+  background: #1f1b28;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+.panel > input {
+  display: block;
+  width: calc(100% - 14px);
+  margin-bottom: 8px;
+}
+
+.panel > label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.panel > label input {
+  width: 80px;
+}
+
+.panel > input[type='file'] {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.file-button {
+  display: inline-block !important;
+  margin: 0 !important;
+  background: #2a2535;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.error {
+  background: #4a1f1f;
+  border: 1px solid #7a2a2a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0 0 12px;
 }
 
 .token-row {

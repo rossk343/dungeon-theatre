@@ -42,11 +42,20 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("GridOffsetX")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GridOffsetY")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("GridSize")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Height")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
