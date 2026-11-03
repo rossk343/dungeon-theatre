@@ -59,6 +59,13 @@ export default function App() {
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarOpen') !== 'false')
+
+  const toggleSidebar = () =>
+    setSidebarOpen((open) => {
+      localStorage.setItem('sidebarOpen', String(!open))
+      return !open
+    })
   const connection = useRef<HubConnection | null>(null)
   const sceneRef = useRef<string | null>(null)
   const scenesRef = useRef<Scene[]>([])
@@ -315,6 +322,15 @@ export default function App() {
       </header>
       <main>
         <div className="viewport" ref={viewportRef}>
+          <button
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-expanded={sidebarOpen}
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            {sidebarOpen ? '»' : '«'}
+          </button>
         {scene && (
           <>
           <Stage
@@ -398,7 +414,7 @@ export default function App() {
           </>
         )}
         </div>
-        <aside>
+        <aside className={sidebarOpen ? undefined : 'collapsed'}>
           {error && (
             <p className="error" role="alert">
               {error}

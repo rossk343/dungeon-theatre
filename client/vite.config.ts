@@ -5,6 +5,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Plain http://localhost/ in dev; strictPort fails loudly if something else holds port 80.
+    port: 80,
+    strictPort: true,
     proxy: {
       '/hubs': { target: 'http://localhost:5092', ws: true },
       '/api': 'http://localhost:5092',
