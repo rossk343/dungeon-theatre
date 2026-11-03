@@ -142,15 +142,18 @@ export function NewTokenForm({
   onCreate,
 }: {
   busy: boolean
-  onCreate: (name: string, color: string, maxHp: number, file: File | null) => Promise<boolean>
+  onCreate: (name: string, color: string, maxHp: number, speedFeet: number, file: File | null) => Promise<boolean>
 }) {
   const [name, setName] = useState('')
   const [color, setColor] = useState('#8a6d3b')
   const [maxHp, setMaxHp] = useState('10')
+  const [speed, setSpeed] = useState('30')
   const [file, setFile] = useState<File | null>(null)
   const [inputKey, setInputKey] = useState(0)
   const hp = Math.round(Number(maxHp))
-  const valid = name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999
+  const spd = Math.round(Number(speed))
+  const valid =
+    name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999 && Number.isFinite(spd) && spd >= 0 && spd <= 999
 
   return (
     <section className="panel">
@@ -167,6 +170,16 @@ export function NewTokenForm({
           onChange={(e) => setMaxHp(e.target.value)}
           style={{ width: 60 }}
         />
+        <input
+          type="number"
+          aria-label="Speed (ft)"
+          title="Speed in feet per turn"
+          min={0}
+          max={999}
+          value={speed}
+          onChange={(e) => setSpeed(e.target.value)}
+          style={{ width: 60 }}
+        />
       </div>
       <input
         key={inputKey}
@@ -178,7 +191,7 @@ export function NewTokenForm({
       <button
         disabled={busy || !valid}
         onClick={async () => {
-          if (await onCreate(name.trim(), color, hp, file)) {
+          if (await onCreate(name.trim(), color, hp, spd, file)) {
             setName('')
             setFile(null)
             setInputKey((k) => k + 1)

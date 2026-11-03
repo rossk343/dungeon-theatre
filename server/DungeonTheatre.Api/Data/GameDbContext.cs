@@ -24,7 +24,26 @@ public class TokenEntity
     public required string Color { get; set; }
     public int Hp { get; set; }
     public int MaxHp { get; set; }
+    public int SpeedFeet { get; set; } = 30;
     public string? ImageUrl { get; set; }
+}
+
+// One row per scene that has ever had combat; the order itself lives in InitiativeEntity.
+public class EncounterEntity
+{
+    public required string SceneId { get; set; }
+    public bool Active { get; set; }
+    public int Round { get; set; }
+    public string? CurrentTokenId { get; set; }
+    // Feet the current token has already moved this turn.
+    public int MovedFeet { get; set; }
+}
+
+public class InitiativeEntity
+{
+    public required string SceneId { get; set; }
+    public required string TokenId { get; set; }
+    public int Initiative { get; set; }
 }
 
 public class SceneEntity
@@ -58,6 +77,8 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
     public DbSet<TokenEntity> Tokens => Set<TokenEntity>();
     public DbSet<SceneEntity> Scenes => Set<SceneEntity>();
     public DbSet<PlacementEntity> Placements => Set<PlacementEntity>();
+    public DbSet<EncounterEntity> Encounters => Set<EncounterEntity>();
+    public DbSet<InitiativeEntity> Initiative => Set<InitiativeEntity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -84,6 +105,17 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
             e.HasKey(s => s.Id);
             e.Property(s => s.Name).HasMaxLength(100);
             e.HasOne<ChapterEntity>().WithMany().HasForeignKey(s => s.ChapterId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<EncounterEntity>(e =>
+        {
+            e.HasKey(x => x.SceneId);
+            e.HasOne<SceneEntity>().WithMany().HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<InitiativeEntity>(e =>
+        {
+            e.HasKey(x => new { x.SceneId, x.TokenId });
+            e.HasOne<SceneEntity>().WithMany().HasForeignKey(x => x.SceneId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<TokenEntity>().WithMany().HasForeignKey(x => x.TokenId).OnDelete(DeleteBehavior.Cascade);
         });
         // Deleting a scene or a token removes its placements, never the other side.
         b.Entity<PlacementEntity>(e =>

@@ -4,7 +4,29 @@ export interface Token {
   color: string
   hp: number
   maxHp: number
+  speedFeet: number
   imageUrl: string | null
+}
+
+export interface InitiativeEntry {
+  tokenId: string
+  initiative: number
+}
+
+export interface Combat {
+  sceneId: string
+  active: boolean
+  round: number
+  currentTokenId: string | null
+  movedFeet: number
+  entries: InitiativeEntry[]
+}
+
+export interface MoveResult {
+  placement: Placement
+  accepted: boolean
+  reason: string | null
+  combat: Combat | null
 }
 
 export interface Chapter {

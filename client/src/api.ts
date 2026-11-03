@@ -49,11 +49,12 @@ export function deleteScene(sceneId: string): Promise<void> {
   return request(`/api/scenes/${id(sceneId)}`, 'DELETE')
 }
 
-export function createToken(name: string, color: string, maxHp: number, file: File | null): Promise<Token> {
+export function createToken(name: string, color: string, maxHp: number, speedFeet: number, file: File | null): Promise<Token> {
   const form = new FormData()
   form.append('name', name)
   form.append('color', color)
   form.append('maxHp', String(maxHp))
+  form.append('speedFeet', String(speedFeet))
   if (file) form.append('file', file)
   return request('/api/tokens', 'POST', form)
 }

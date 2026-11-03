@@ -9,6 +9,7 @@ builder.Services.AddSignalR();
 builder.Services.AddDbContext<GameDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Game") ?? "Data Source=dungeon-theatre.db"));
 builder.Services.AddScoped<GameStore>();
+builder.Services.AddScoped<CombatStore>();
 builder.Services.AddSingleton<MapImageStorage>();
 
 var app = builder.Build();

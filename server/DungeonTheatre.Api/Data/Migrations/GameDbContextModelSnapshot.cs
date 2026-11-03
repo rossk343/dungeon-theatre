@@ -40,6 +40,28 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.ToTable("Chapters");
                 });
 
+            modelBuilder.Entity("DungeonTheatre.Api.Data.EncounterEntity", b =>
+                {
+                    b.Property<string>("SceneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CurrentTokenId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MovedFeet")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("SceneId");
+
+                    b.ToTable("Encounters");
+                });
+
             modelBuilder.Entity("DungeonTheatre.Api.Data.GameEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -53,6 +75,24 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Games");
+                });
+
+            modelBuilder.Entity("DungeonTheatre.Api.Data.InitiativeEntity", b =>
+                {
+                    b.Property<string>("SceneId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Initiative")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("SceneId", "TokenId");
+
+                    b.HasIndex("TokenId");
+
+                    b.ToTable("Initiative");
                 });
 
             modelBuilder.Entity("DungeonTheatre.Api.Data.PlacementEntity", b =>
@@ -148,6 +188,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("SpeedFeet")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GameId");
@@ -160,6 +203,30 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.HasOne("DungeonTheatre.Api.Data.GameEntity", null)
                         .WithMany()
                         .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DungeonTheatre.Api.Data.EncounterEntity", b =>
+                {
+                    b.HasOne("DungeonTheatre.Api.Data.SceneEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DungeonTheatre.Api.Data.InitiativeEntity", b =>
+                {
+                    b.HasOne("DungeonTheatre.Api.Data.SceneEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SceneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DungeonTheatre.Api.Data.TokenEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TokenId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

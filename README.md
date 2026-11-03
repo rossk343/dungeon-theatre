@@ -42,6 +42,12 @@ A game contains chapters, and chapters contain scenes. Use the **Chapters** pane
 
 Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, optional art), replace their art, or delete them. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
 
+## Initiative and movement
+
+The panel on the left is the initiative tracker for the current scene. Add placed tokens with an initiative (leave it blank to roll a d20), edit values inline, then **Start combat**. Order is highest initiative first; **Next turn** advances and increments the round when it wraps. Click a name to zoom the map to that token.
+
+Each token has a speed in feet (default 30, editable in the Tokens list). During combat only the token whose turn it is is metered: every square, diagonals included, costs the scene's feet per square (5 by default), and a drag that would exceed the remaining movement is rejected and the token snaps back. **Reset move** gives the current token its movement back. Other tokens move freely, and there are no GM/player roles yet, so anyone can use these controls (roles arrive with accounts).
+
 ## Map images and grid
 - Create a scene from the **New scene** panel (name plus a PNG, JPEG, WebP or GIF), or use **Replace map image** on an existing scene.
 - Uploads are limited to 25 MB and 10000x10000 px. The server identifies the file type from its bytes (not the filename), stores it under `server/DungeonTheatre.Api/uploads/` with a random name and serves it at `/uploads/...`. That folder is git-ignored.

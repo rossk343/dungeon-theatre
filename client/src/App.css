@@ -310,3 +310,121 @@ button.danger {
 .token-row {
   flex-wrap: wrap;
 }
+
+.tracker {
+  width: 250px;
+  flex: none;
+  background: #1a1622;
+  border: 1px solid #3a3347;
+  border-radius: 6px;
+  padding: 10px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+.tracker h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.tracker-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.tracker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tracker-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.tracker-list li.current {
+  border-color: #e0b341;
+  background: rgba(224, 179, 65, 0.12);
+}
+
+.tracker-list li.empty {
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
+.turn-marker {
+  width: 12px;
+  color: #e0b341;
+}
+
+button.link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.init-input,
+.tracker-add input {
+  width: 46px;
+  background: #1f1b28;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 3px 4px;
+}
+
+.tracker .hp {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+.tracker .moved {
+  flex-basis: 100%;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: #e0b341;
+}
+
+.tracker-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tracker-add select {
+  flex: 1;
+  min-width: 0;
+  background: #1f1b28;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+}
+
+.notice {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  background: #4a1f1f;
+  border: 1px solid #7a2a2a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  pointer-events: none;
+}

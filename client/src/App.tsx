@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
+import type Konva from 'konva'
 import { Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
 import {
@@ -7,9 +8,10 @@ import {
   replaceSceneImage, setTokenImage,
 } from './api'
 import { ChapterTree } from './ChapterTree'
+import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
-import type { Chapter, GameState, GridPreview, Placement, Scene, Token } from './types'
+import type { Chapter, Combat, GameState, GridPreview, MoveResult, Placement, Scene, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -54,6 +56,9 @@ export default function App() {
   const [gameName, setGameName] = useState('')
   const [tokens, setTokens] = useState<Token[]>([])
   const [placements, setPlacements] = useState<Placement[]>([])
+  const [combat, setCombat] = useState<Combat | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const noticeTimer = useRef<number | undefined>(undefined)
   const [sceneId, setSceneId] = useState<string | null>(null)
   const [preview, setPreview] = useState<GridPreview | null>(null)
   const [status, setStatus] = useState('connecting')
@@ -112,9 +117,16 @@ export default function App() {
     sceneRef.current = id
     setSceneId(id)
     setPreview(null)
-    const list = await conn.invoke<Placement[]>('JoinScene', id)
+    setCombat(null)
+    const [list, state] = await Promise.all([
+      conn.invoke<Placement[]>('JoinScene', id),
+      conn.invoke<Combat>('GetCombat', id),
+    ])
     // Ignore the reply if the user already switched again.
-    if (sceneRef.current === id) setPlacements(list)
+    if (sceneRef.current === id) {
+      setPlacements(list)
+      setCombat(state)
+    }
   }, [])
 
   const applyScene = useCallback((s: Scene) => {
@@ -157,6 +169,9 @@ export default function App() {
       if (sid === sceneRef.current) setPlacements((prev) => prev.filter((p) => p.tokenId !== tokenId))
     })
     conn.on('TokenAdded', applyToken)
+    conn.on('CombatUpdated', (c: Combat) => {
+      if (c.sceneId === sceneRef.current) setCombat(c)
+    })
     conn.on('TokenUpdated', applyToken)
     conn.on('TokenDeleted', (id: string) => {
       setTokens((prev) => prev.filter((t) => t.id !== id))
@@ -177,6 +192,7 @@ export default function App() {
         sceneRef.current = null
         setSceneId(null)
         setPlacements([])
+        setCombat(null)
       }
     })
 
@@ -264,8 +280,8 @@ export default function App() {
     void invoke('RenameScene', savedScene.id, name)
   }
 
-  const handleCreateToken = async (name: string, color: string, maxHp: number, file: File | null) => {
-    const t = await run(() => createToken(name, color, maxHp, file))
+  const handleCreateToken = async (name: string, color: string, maxHp: number, speedFeet: number, file: File | null) => {
+    const t = await run(() => createToken(name, color, maxHp, speedFeet, file))
     if (t) applyToken(t)
     return t !== null
   }
@@ -286,10 +302,43 @@ export default function App() {
     void invoke('UpdateSceneGrid', savedScene.id, gridSize, offsetX, offsetY)
   }
 
-  const move = (tokenId: string, x: number, y: number) => {
-    setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? { ...p, x, y } : p)))
-    void invoke('MovePlacement', sceneId, tokenId, x, y)
+  const showNotice = (text: string) => {
+    setNotice(text)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 3000)
   }
+
+  // Optimistic: the server has the final say and a rejected move snaps the token back.
+  const commitMove = async (tokenId: string, x: number, y: number, node: Konva.Node) => {
+    setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? { ...p, x, y } : p)))
+    const id = sceneRef.current
+    let result: MoveResult | null | undefined
+    try {
+      result = await connection.current?.invoke<MoveResult | null>('MovePlacement', id, tokenId, x, y)
+    } catch {
+      return
+    }
+    if (!result || sceneRef.current !== id) return
+    if (result.combat) setCombat(result.combat)
+    if (!result.accepted) {
+      const { x: rx, y: ry } = result.placement
+      node.position({ x: rx, y: ry })
+      setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? { ...p, x: rx, y: ry } : p)))
+      showNotice(result.reason ?? 'Move not allowed.')
+    }
+  }
+
+  const focusToken = (tokenId: string) => {
+    const p = placements.find((x) => x.tokenId === tokenId)
+    if (!p || !scene) return
+    const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, viewport.height / (scene.gridSize * 8)))
+    setViewState({
+      key: viewKey,
+      view: { scale, x: viewport.width / 2 - p.x * scale, y: viewport.height / 2 - p.y * scale },
+    })
+  }
+
+  const combatCall = (method: string, ...args: unknown[]) => void invoke(method, sceneId, ...args)
 
   const addToScene = (tokenId: string) => {
     if (!scene) return
@@ -304,10 +353,10 @@ export default function App() {
     void invoke('RemovePlacement', sceneId, tokenId)
   }
 
-  const saveToken = (t: Token, name: string, hp: number) => {
-    const next = { ...t, name, hp: Math.min(Math.max(hp, 0), t.maxHp) }
+  const saveToken = (t: Token, name: string, hp: number, speedFeet: number) => {
+    const next = { ...t, name, hp: Math.min(Math.max(hp, 0), t.maxHp), speedFeet }
     setTokens((prev) => prev.map((p) => (p.id === t.id ? next : p)))
-    void invoke('UpdateToken', t.id, name, hp)
+    void invoke('UpdateToken', t.id, name, hp, speedFeet)
   }
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
@@ -321,7 +370,24 @@ export default function App() {
         {gameName && <span className="game-name">{gameName}</span>}
       </header>
       <main>
+        <InitiativeTracker
+          combat={combat}
+          tokens={tokenById}
+          placements={placements}
+          onFocus={focusToken}
+          onSetInitiative={(tokenId, n) => combatCall('SetInitiative', tokenId, n)}
+          onRemove={(tokenId) => combatCall('RemoveInitiative', tokenId)}
+          onStart={() => combatCall('StartCombat')}
+          onNext={() => combatCall('NextTurn')}
+          onEnd={() => combatCall('EndCombat')}
+          onResetMovement={() => combatCall('ResetMovement')}
+        />
         <div className="viewport" ref={viewportRef}>
+          {notice && (
+            <div className="notice" role="status">
+              {notice}
+            </div>
+          )}
           <button
             className="sidebar-toggle"
             onClick={toggleSidebar}
@@ -369,17 +435,18 @@ export default function App() {
                     x={p.x}
                     y={p.y}
                     radius={radius}
+                    active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     onDragMove={(e) => {
                       const now = performance.now()
                       if (now - lastSent.current < SEND_INTERVAL_MS) return
                       lastSent.current = now
-                      void invoke('MovePlacement', scene.id, p.tokenId, e.target.x(), e.target.y())
+                      void invoke('PreviewPlacement', scene.id, p.tokenId, e.target.x(), e.target.y())
                     }}
                     onDragEnd={(e) => {
                       const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX)
                       const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY)
                       e.target.position({ x, y })
-                      move(p.tokenId, x, y)
+                      void commitMove(p.tokenId, x, y, e.target)
                     }}
                   />
                 )
@@ -474,7 +541,7 @@ export default function App() {
 function TokenRow(props: {
   token: Token
   onScene: boolean
-  onSave: (t: Token, name: string, hp: number) => void
+  onSave: (t: Token, name: string, hp: number, speedFeet: number) => void
   onAdd: () => void
   onRemove: () => void
   onArt: (file: File) => void
@@ -493,7 +560,7 @@ function TokenRow(props: {
         key={`n${token.name}`}
         defaultValue={token.name}
         maxLength={40}
-        onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp)}
+        onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
       />
       <input
         key={`h${token.hp}`}
@@ -501,9 +568,24 @@ function TokenRow(props: {
         min={0}
         max={token.maxHp}
         defaultValue={token.hp}
-        onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0)}
+        onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
       />
       <span>/{token.maxHp}</span>
+      <input
+        key={`s${token.speedFeet}`}
+        type="number"
+        min={0}
+        max={999}
+        title="Speed (ft)"
+        aria-label={`${token.name} speed in feet`}
+        defaultValue={token.speedFeet}
+        onBlur={(e) => {
+          const n = Math.round(Number(e.target.value))
+          if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n)
+          else e.target.value = String(token.speedFeet)
+        }}
+      />
+      <span>ft</span>
       <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>
       <label className="icon-button" title="Set token art">
         Art

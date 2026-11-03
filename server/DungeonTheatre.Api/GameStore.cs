@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
-public record Token(string Id, string Name, string Color, int Hp, int MaxHp, string? ImageUrl);
+public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, string? ImageUrl);
 
 public record Chapter(string Id, string Name, int SortOrder);
 
@@ -29,7 +29,11 @@ public class GameStore(GameDbContext db)
 
     private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);
 
-    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.ImageUrl);
+    private const int MaxSpeedFeet = 999;
+
+    public static bool IsValidSpeed(int speed) => speed is >= 0 and <= MaxSpeedFeet;
+
+    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ImageUrl);
 
     private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
 
@@ -158,7 +162,7 @@ public class GameStore(GameDbContext db)
         await db.Placements.AsNoTracking().Where(p => p.SceneId == sceneId)
             .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y)).ToListAsync();
 
-    // Adds the placement, or moves it if the token is already on the scene.
+    // Adds the placement; an existing one is returned untouched so this can't bypass movement limits.
     public async Task<Placement?> SetPlacementAsync(string sceneId, string tokenId, double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) return null;
@@ -167,34 +171,24 @@ public class GameStore(GameDbContext db)
 
         var entity = await db.Placements.FindAsync(sceneId, tokenId);
         if (entity is null)
+        {
             db.Placements.Add(entity = new PlacementEntity { SceneId = sceneId, TokenId = tokenId, X = x, Y = y });
-        else
-            (entity.X, entity.Y) = (x, y);
-        await db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+        }
         return ToDto(entity);
     }
-
-    public async Task<Placement?> MovePlacementAsync(string sceneId, string tokenId, double x, double y)
-    {
-        if (!double.IsFinite(x) || !double.IsFinite(y)) return null;
-        var entity = await db.Placements.FindAsync(sceneId, tokenId);
-        if (entity is null) return null;
-        (entity.X, entity.Y) = (x, y);
-        await db.SaveChangesAsync();
-        return ToDto(entity);
-    }
-
     public async Task<bool> RemovePlacementAsync(string sceneId, string tokenId) =>
         await db.Placements.Where(p => p.SceneId == sceneId && p.TokenId == tokenId).ExecuteDeleteAsync() > 0;
 
-    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp)
+    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp, int speedFeet)
     {
         name = name.Trim();
-        if (name.Length is 0 or > 40) return null;
+        if (name.Length is 0 or > 40 || !IsValidSpeed(speedFeet)) return null;
         var entity = await db.Tokens.FindAsync(tokenId);
         if (entity is null) return null;
         entity.Name = name;
         entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
+        entity.SpeedFeet = speedFeet;
         await db.SaveChangesAsync();
         return ToDto(entity);
     }
@@ -222,10 +216,11 @@ public class GameStore(GameDbContext db)
         return (true, entity.ImageUrl);
     }
 
-    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, string? imageUrl)
+    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, string? imageUrl)
     {
         name = name.Trim();
-        if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999) return null;
+        if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 || !IsValidSpeed(speedFeet))
+            return null;
         var entity = new TokenEntity
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -234,6 +229,7 @@ public class GameStore(GameDbContext db)
             Color = color,
             Hp = maxHp,
             MaxHp = maxHp,
+            SpeedFeet = speedFeet,
             ImageUrl = imageUrl,
         };
         db.Tokens.Add(entity);
