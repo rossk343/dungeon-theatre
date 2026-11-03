@@ -183,3 +183,53 @@ button:disabled {
   border-radius: 50%;
   flex: none;
 }
+
+img.swatch {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border: 2px solid;
+  box-sizing: border-box;
+}
+
+.row.first {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel h2.sub {
+  margin-top: 12px;
+}
+
+button.danger {
+  background: #4a1f1f;
+  border-color: #7a2a2a;
+}
+
+.icon-button {
+  padding: 4px 8px !important;
+  font-size: 0.85rem;
+  display: inline-block;
+  background: #2a2535;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.icon-button input {
+  display: none;
+}
+
+.token-row input:not([type='number']) {
+  width: 70px;
+  min-width: 0;
+}
+
+.token-row {
+  flex-wrap: wrap;
+}

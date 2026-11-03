@@ -4,6 +4,7 @@ export interface Token {
   color: string
   hp: number
   maxHp: number
+  imageUrl: string | null
 }
 
 export interface Scene {

@@ -1,21 +1,47 @@
-import type { Scene } from './types'
+import type { Scene, Token } from './types'
 
-async function send(url: string, method: string, body: FormData): Promise<Scene> {
+async function request<T>(url: string, method: string, body?: FormData): Promise<T> {
   const res = await fetch(url, { method, body })
+  if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(data?.error ?? `Upload failed (${res.status})`)
-  return data as Scene
+  if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`)
+  return data as T
 }
+
+const id = encodeURIComponent
 
 export function createScene(name: string, file: File): Promise<Scene> {
   const form = new FormData()
   form.append('name', name)
   form.append('file', file)
-  return send('/api/scenes', 'POST', form)
+  return request('/api/scenes', 'POST', form)
 }
 
 export function replaceSceneImage(sceneId: string, file: File): Promise<Scene> {
   const form = new FormData()
   form.append('file', file)
-  return send(`/api/scenes/${encodeURIComponent(sceneId)}/image`, 'PUT', form)
+  return request(`/api/scenes/${id(sceneId)}/image`, 'PUT', form)
+}
+
+export function deleteScene(sceneId: string): Promise<void> {
+  return request(`/api/scenes/${id(sceneId)}`, 'DELETE')
+}
+
+export function createToken(name: string, color: string, maxHp: number, file: File | null): Promise<Token> {
+  const form = new FormData()
+  form.append('name', name)
+  form.append('color', color)
+  form.append('maxHp', String(maxHp))
+  if (file) form.append('file', file)
+  return request('/api/tokens', 'POST', form)
+}
+
+export function setTokenImage(tokenId: string, file: File): Promise<Token> {
+  const form = new FormData()
+  form.append('file', file)
+  return request(`/api/tokens/${id(tokenId)}/image`, 'PUT', form)
+}
+
+export function deleteToken(tokenId: string): Promise<void> {
+  return request(`/api/tokens/${id(tokenId)}`, 'DELETE')
 }

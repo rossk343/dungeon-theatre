@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
-public record Token(string Id, string Name, string Color, int Hp, int MaxHp);
+public record Token(string Id, string Name, string Color, int Hp, int MaxHp, string? ImageUrl);
 
 public record Scene(
     string Id, string Name, int Width, int Height, int GridSize, int GridOffsetX, int GridOffsetY, string? ImageUrl);
@@ -23,7 +23,7 @@ public class GameStore(GameDbContext db)
 
     private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);
 
-    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp);
+    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.ImageUrl);
 
     private static Scene ToDto(SceneEntity s) =>
         new(s.Id, s.Name, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY, s.ImageUrl);
@@ -31,9 +31,8 @@ public class GameStore(GameDbContext db)
     public async Task<GameState> GetStateAsync()
     {
         var scenes = await db.Scenes.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
-        var tokens = await db.Tokens.AsNoTracking().OrderBy(t => t.Name)
-            .Select(t => new Token(t.Id, t.Name, t.Color, t.Hp, t.MaxHp)).ToListAsync();
-        return new GameState(scenes.Select(ToDto).ToList(), tokens);
+        var tokens = await db.Tokens.AsNoTracking().OrderBy(t => t.Name).ToListAsync();
+        return new GameState(scenes.Select(ToDto).ToList(), tokens.Select(ToDto).ToList());
     }
 
     public async Task<Scene> CreateSceneAsync(string name, string imageUrl, int width, int height)
@@ -121,5 +120,69 @@ public class GameStore(GameDbContext db)
         entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
         await db.SaveChangesAsync();
         return ToDto(entity);
+    }
+
+    public static bool IsValidName(string? name, int max) => !string.IsNullOrWhiteSpace(name) && name.Trim().Length <= max;
+
+    public async Task<Scene?> RenameSceneAsync(string sceneId, string name)
+    {
+        name = name.Trim();
+        if (!IsValidName(name, 100)) return null;
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null) return null;
+        entity.Name = name;
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    // Placements go with the scene (cascade); tokens are untouched.
+    public async Task<(bool Found, string? ImageUrl)> DeleteSceneAsync(string sceneId)
+    {
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null) return (false, null);
+        db.Scenes.Remove(entity);
+        await db.SaveChangesAsync();
+        return (true, entity.ImageUrl);
+    }
+
+    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, string? imageUrl)
+    {
+        name = name.Trim();
+        if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999) return null;
+        var entity = new TokenEntity
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = name,
+            Color = color,
+            Hp = maxHp,
+            MaxHp = maxHp,
+            ImageUrl = imageUrl,
+        };
+        db.Tokens.Add(entity);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public static bool IsValidColor(string? color) =>
+        color is { Length: 7 } && color[0] == '#' && color.Skip(1).All(Uri.IsHexDigit);
+
+    public async Task<(Token Token, string? OldImageUrl)?> SetTokenImageAsync(string tokenId, string imageUrl)
+    {
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return null;
+        var old = entity.ImageUrl;
+        entity.ImageUrl = imageUrl;
+        await db.SaveChangesAsync();
+        return (ToDto(entity), old);
+    }
+
+    // Placements go with the token (cascade) on every scene.
+    public async Task<(bool Found, string? ImageUrl)> DeleteTokenAsync(string tokenId)
+    {
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return (false, null);
+        db.Tokens.Remove(entity);
+        await db.SaveChangesAsync();
+        return (true, entity.ImageUrl);
     }
 }

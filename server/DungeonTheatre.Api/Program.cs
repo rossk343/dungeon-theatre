@@ -16,8 +16,10 @@ var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<GameDbContext>();
+    // Seed only a brand-new database so deleting everything doesn't bring the samples back.
+    var isNewDatabase = !(await db.Database.GetAppliedMigrationsAsync()).Any();
     await db.Database.MigrateAsync();
-    await SeedData.EnsureSeededAsync(db);
+    if (isNewDatabase) await SeedData.SeedAsync(db);
 }
 
 var images = app.Services.GetRequiredService<MapImageStorage>();
@@ -37,5 +39,6 @@ app.UseStaticFiles(new StaticFileOptions
 app.MapHub<GameHub>("/hubs/game");
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 app.MapSceneEndpoints();
+app.MapTokenEndpoints();
 
 app.Run();

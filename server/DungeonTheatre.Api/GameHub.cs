@@ -46,6 +46,14 @@ public class GameHub(GameStore store) : Hub
     }
 
     // Scene settings are game-wide too, so everyone sees a recalibrated grid.
+    public async Task<Scene?> RenameScene(string sceneId, string name)
+    {
+        var scene = await store.RenameSceneAsync(sceneId, name);
+        if (scene is not null)
+            await Clients.Others.SendAsync("SceneUpdated", scene);
+        return scene;
+    }
+
     public async Task<Scene?> UpdateSceneGrid(string sceneId, int gridSize, int offsetX, int offsetY)
     {
         var scene = await store.UpdateSceneGridAsync(sceneId, gridSize, offsetX, offsetY);

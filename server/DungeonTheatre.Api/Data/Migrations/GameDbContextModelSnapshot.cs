@@ -82,6 +82,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<int>("Hp")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("MaxHp")
                         .HasColumnType("INTEGER");
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
-import { Circle, Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
+import { Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
-import { createScene, replaceSceneImage } from './api'
-import { NewSceneForm, SceneSettings } from './SceneSettings'
+import { createScene, createToken, deleteScene, deleteToken, replaceSceneImage, setTokenImage } from './api'
+import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
+import { TokenDisc } from './TokenDisc'
 import type { GameState, GridPreview, Placement, Scene, Token } from './types'
 import './App.css'
 
@@ -42,7 +43,12 @@ export default function App() {
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth)
   const connection = useRef<HubConnection | null>(null)
   const sceneRef = useRef<string | null>(null)
+  const scenesRef = useRef<Scene[]>([])
   const lastSent = useRef(0)
+
+  useEffect(() => {
+    scenesRef.current = scenes
+  }, [scenes])
 
   const savedScene = scenes.find((s) => s.id === sceneId) ?? null
   // The preview only applies to the scene it was made for.
@@ -74,6 +80,14 @@ export default function App() {
     setPreview((p) => (p?.sceneId === s.id ? null : p))
   }, [])
 
+  const applyToken = useCallback((t: Token) => {
+    setTokens((prev) =>
+      prev.some((x) => x.id === t.id)
+        ? prev.map((x) => (x.id === t.id ? t : x))
+        : [...prev, t].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+    )
+  }, [])
+
   useEffect(() => {
     const conn = new HubConnectionBuilder().withUrl('/hubs/game').withAutomaticReconnect().build()
     connection.current = conn
@@ -92,9 +106,26 @@ export default function App() {
     conn.on('PlacementRemoved', (sid: string, tokenId: string) => {
       if (sid === sceneRef.current) setPlacements((prev) => prev.filter((p) => p.tokenId !== tokenId))
     })
-    conn.on('TokenUpdated', (t: Token) => setTokens((prev) => prev.map((p) => (p.id === t.id ? t : p))))
+    conn.on('TokenAdded', applyToken)
+    conn.on('TokenUpdated', applyToken)
+    conn.on('TokenDeleted', (id: string) => {
+      setTokens((prev) => prev.filter((t) => t.id !== id))
+      setPlacements((prev) => prev.filter((p) => p.tokenId !== id))
+    })
     conn.on('SceneAdded', applyScene)
     conn.on('SceneUpdated', applyScene)
+    conn.on('SceneDeleted', (id: string) => {
+      setScenes((prev) => prev.filter((s) => s.id !== id))
+      setPreview((p) => (p?.sceneId === id ? null : p))
+      if (sceneRef.current !== id) return
+      const next = scenesRef.current.find((s) => s.id !== id)
+      if (next) void joinScene(next.id)
+      else {
+        sceneRef.current = null
+        setSceneId(null)
+        setPlacements([])
+      }
+    })
 
     // Initial load and reconnect both rejoin the current scene.
     const load = async () => {
@@ -114,20 +145,18 @@ export default function App() {
     return () => {
       void conn.stop()
     }
-  }, [joinScene, applyScene])
+  }, [joinScene, applyScene, applyToken])
 
   const invoke = (method: string, ...args: unknown[]) =>
     connection.current?.invoke(method, ...args).catch(() => {})
 
-  const runUpload = async (action: () => Promise<Scene>): Promise<Scene | null> => {
+  const run = async <T,>(action: () => Promise<T>): Promise<T | null> => {
     setUploading(true)
     setError(null)
     try {
-      const s = await action()
-      applyScene(s)
-      return s
+      return await action()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed.')
+      setError(e instanceof Error ? e.message : 'Request failed.')
       return null
     } finally {
       setUploading(false)
@@ -135,13 +164,44 @@ export default function App() {
   }
 
   const handleCreate = async (name: string, file: File) => {
-    const s = await runUpload(() => createScene(name, file))
-    if (s) await joinScene(s.id)
+    const s = await run(() => createScene(name, file))
+    if (s) {
+      applyScene(s)
+      await joinScene(s.id)
+    }
     return s !== null
   }
 
-  const handleReplaceImage = (file: File) => {
-    if (savedScene) void runUpload(() => replaceSceneImage(savedScene.id, file))
+  const handleReplaceImage = async (file: File) => {
+    if (!savedScene) return
+    const s = await run(() => replaceSceneImage(savedScene.id, file))
+    if (s) applyScene(s)
+  }
+
+  const handleDeleteScene = () => {
+    if (savedScene) void run(() => deleteScene(savedScene.id))
+  }
+
+  const renameScene = (name: string) => {
+    if (!savedScene) return
+    applyScene({ ...savedScene, name })
+    void invoke('RenameScene', savedScene.id, name)
+  }
+
+  const handleCreateToken = async (name: string, color: string, maxHp: number, file: File | null) => {
+    const t = await run(() => createToken(name, color, maxHp, file))
+    if (t) applyToken(t)
+    return t !== null
+  }
+
+  const handleTokenArt = async (token: Token, file: File) => {
+    const t = await run(() => setTokenImage(token.id, file))
+    if (t) applyToken(t)
+  }
+
+  const handleDeleteToken = (token: Token) => {
+    if (window.confirm(`Delete "${token.name}" from every scene? This can't be undone.`))
+      void run(() => deleteToken(token.id))
   }
 
   const saveGrid = (gridSize: number, offsetX: number, offsetY: number) => {
@@ -213,15 +273,12 @@ export default function App() {
                 if (!t) return null
                 const radius = scene.gridSize / 2 - 4
                 return (
-                  <Circle
+                  <TokenDisc
                     key={p.tokenId}
+                    token={t}
                     x={p.x}
                     y={p.y}
                     radius={radius}
-                    fill={t.color}
-                    stroke="#e8e0d0"
-                    strokeWidth={2}
-                    draggable
                     onDragMove={(e) => {
                       const now = performance.now()
                       if (now - lastSent.current < SEND_INTERVAL_MS) return
@@ -267,15 +324,18 @@ export default function App() {
           )}
           {savedScene && (
             <SceneSettings
-              key={`${savedScene.id}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
+              key={`${savedScene.id}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
               scene={savedScene}
               busy={uploading}
               onPreview={setPreview}
               onSave={saveGrid}
-              onReplaceImage={handleReplaceImage}
+              onReplaceImage={(f) => void handleReplaceImage(f)}
+              onRename={renameScene}
+              onDelete={handleDeleteScene}
             />
           )}
           <NewSceneForm busy={uploading} onCreate={handleCreate} />
+          <NewTokenForm busy={uploading} onCreate={handleCreateToken} />
           <section className="panel">
             <h2>Tokens</h2>
             {tokens.map((t) => (
@@ -286,6 +346,8 @@ export default function App() {
                 onSave={saveToken}
                 onAdd={() => addToScene(t.id)}
                 onRemove={() => removeFromScene(t.id)}
+                onArt={(f) => void handleTokenArt(t, f)}
+                onDelete={() => handleDeleteToken(t)}
               />
             ))}
           </section>
@@ -301,11 +363,17 @@ function TokenRow(props: {
   onSave: (t: Token, name: string, hp: number) => void
   onAdd: () => void
   onRemove: () => void
+  onArt: (file: File) => void
+  onDelete: () => void
 }) {
   const { token, onScene } = props
   return (
     <div className="token-row">
-      <span className="swatch" style={{ background: token.color }} />
+      {token.imageUrl ? (
+        <img className="swatch" src={token.imageUrl} alt="" style={{ borderColor: token.color }} />
+      ) : (
+        <span className="swatch" style={{ background: token.color }} />
+      )}
       {/* Keyed on server values so remote updates reset the inputs. */}
       <input
         key={`n${token.name}`}
@@ -323,6 +391,21 @@ function TokenRow(props: {
       />
       <span>/{token.maxHp}</span>
       <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>
+      <label className="icon-button" title="Set token art">
+        Art
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) props.onArt(file)
+          }}
+        />
+      </label>
+      <button className="danger icon-button" title="Delete token" aria-label={`Delete ${token.name}`} onClick={props.onDelete}>
+        ✕
+      </button>
     </div>
   )
 }

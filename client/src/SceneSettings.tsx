@@ -12,10 +12,13 @@ interface SettingsProps {
   onPreview: (p: GridPreview) => void
   onSave: (gridSize: number, offsetX: number, offsetY: number) => void
   onReplaceImage: (file: File) => void
+  onRename: (name: string) => void
+  onDelete: () => void
 }
 
 // Remounted (via key) whenever the saved scene changes, so inputs always match the server.
-export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage }: SettingsProps) {
+export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage, onRename, onDelete }: SettingsProps) {
+  const [name, setName] = useState(scene.name)
   const [size, setSize] = useState(String(scene.gridSize))
   const [ox, setOx] = useState(String(scene.gridOffsetX))
   const [oy, setOy] = useState(String(scene.gridOffsetY))
@@ -50,7 +53,21 @@ export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage }
 
   return (
     <section className="panel">
-      <h2>Grid</h2>
+      <h2>Scene</h2>
+      <div className="row first">
+        <input
+          className="grow"
+          value={name}
+          maxLength={100}
+          aria-label="Scene name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && name.trim() && name.trim() !== scene.name && onRename(name.trim())}
+        />
+        <button disabled={!name.trim() || name.trim() === scene.name} onClick={() => onRename(name.trim())}>
+          Rename
+        </button>
+      </div>
+      <h2 className="sub">Grid</h2>
       <p className="hint">Match the lines to the squares printed on the map. Changes preview live.</p>
       <label>
         Square size (px)
@@ -91,6 +108,71 @@ export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage }
       <p className="hint">
         {scene.width}×{scene.height}px
       </p>
+      <div className="row">
+        <button
+          className="danger"
+          onClick={() => {
+            if (window.confirm(`Delete "${scene.name}"? Its map and token positions are removed; tokens are kept.`))
+              onDelete()
+          }}
+        >
+          Delete scene
+        </button>
+      </div>
+    </section>
+  )
+}
+
+export function NewTokenForm({
+  busy,
+  onCreate,
+}: {
+  busy: boolean
+  onCreate: (name: string, color: string, maxHp: number, file: File | null) => Promise<boolean>
+}) {
+  const [name, setName] = useState('')
+  const [color, setColor] = useState('#8a6d3b')
+  const [maxHp, setMaxHp] = useState('10')
+  const [file, setFile] = useState<File | null>(null)
+  const [inputKey, setInputKey] = useState(0)
+  const hp = Math.round(Number(maxHp))
+  const valid = name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999
+
+  return (
+    <section className="panel">
+      <h2>New token</h2>
+      <div className="row first">
+        <input className="grow" placeholder="Name" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+        <input type="color" aria-label="Colour" value={color} onChange={(e) => setColor(e.target.value)} />
+        <input
+          type="number"
+          aria-label="Max HP"
+          min={1}
+          max={9999}
+          value={maxHp}
+          onChange={(e) => setMaxHp(e.target.value)}
+          style={{ width: 60 }}
+        />
+      </div>
+      <input
+        key={inputKey}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+      />
+      <p className="hint">Art is optional; without it the token is a coloured disc.</p>
+      <button
+        disabled={busy || !valid}
+        onClick={async () => {
+          if (await onCreate(name.trim(), color, hp, file)) {
+            setName('')
+            setFile(null)
+            setInputKey((k) => k + 1)
+          }
+        }}
+      >
+        {busy ? 'Saving…' : 'Create token'}
+      </button>
     </section>
   )
 }

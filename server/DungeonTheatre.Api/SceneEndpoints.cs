@@ -52,5 +52,15 @@ public static class SceneEndpoints
             await hub.Clients.All.SendAsync("SceneUpdated", result.Value.Scene);
             return Results.Ok(result.Value.Scene);
         });
+
+        group.MapDelete("/{id}", async (string id, GameStore store, MapImageStorage images,
+            IHubContext<GameHub> hub) =>
+        {
+            var (found, imageUrl) = await store.DeleteSceneAsync(id);
+            if (!found) return Results.NotFound();
+            images.Delete(imageUrl);
+            await hub.Clients.All.SendAsync("SceneDeleted", id);
+            return Results.NoContent();
+        });
     }
 }

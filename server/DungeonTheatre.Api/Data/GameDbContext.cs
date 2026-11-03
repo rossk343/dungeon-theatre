@@ -9,6 +9,7 @@ public class TokenEntity
     public required string Color { get; set; }
     public int Hp { get; set; }
     public int MaxHp { get; set; }
+    public string? ImageUrl { get; set; }
 }
 
 public class SceneEntity
@@ -62,11 +63,8 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
 
 public static class SeedData
 {
-    // Only seeds an empty database so real edits are never overwritten.
-    public static async Task EnsureSeededAsync(GameDbContext db)
+    public static async Task SeedAsync(GameDbContext db)
     {
-        if (await db.Scenes.AnyAsync() || await db.Tokens.AnyAsync()) return;
-
         db.Scenes.AddRange(
             new SceneEntity { Id = "crypt", Name = "The Sunken Crypt", Width = 1200, Height = 720, GridSize = 60 },
             new SceneEntity { Id = "bridge", Name = "Bridge of Sighs", Width = 1200, Height = 720, GridSize = 80 });
