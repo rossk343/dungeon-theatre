@@ -9,7 +9,19 @@ import type { GameState, GridPreview, Placement, Scene, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
-const SIDEBAR_WIDTH = 400
+const MIN_ZOOM = 0.1
+const MAX_ZOOM = 4
+
+type View = { x: number; y: number; scale: number }
+
+function fitToViewport(scene: Scene, viewport: { width: number; height: number }): View {
+  const scale = Math.min(1, viewport.width / scene.width, viewport.height / scene.height)
+  return {
+    scale,
+    x: (viewport.width - scene.width * scale) / 2,
+    y: (viewport.height - scene.height * scale) / 2,
+  }
+}
 
 const snap = (v: number, grid: number, offset: number) =>
   Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
@@ -40,7 +52,6 @@ export default function App() {
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [viewportWidth, setViewportWidth] = useState(window.innerWidth)
   const connection = useRef<HubConnection | null>(null)
   const sceneRef = useRef<string | null>(null)
   const scenesRef = useRef<Scene[]>([])
@@ -54,13 +65,32 @@ export default function App() {
   // The preview only applies to the scene it was made for.
   const scene: Scene | null =
     savedScene && preview?.sceneId === savedScene.id ? { ...savedScene, ...preview } : savedScene
-  const fit = scene ? Math.min(1, Math.max(0.2, (viewportWidth - SIDEBAR_WIDTH) / scene.width)) : 1
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [viewport, setViewport] = useState({ width: 800, height: 600 })
+  const [viewState, setViewState] = useState<{ key: string; view: View } | null>(null)
+  const viewKey = scene ? `${scene.id}:${scene.imageUrl ?? ''}` : ''
+  const fitView = scene ? fitToViewport(scene, viewport) : { x: 0, y: 0, scale: 1 }
+  // The saved view only applies to the scene (and image) it was made for; otherwise show the whole map.
+  const view = viewState?.key === viewKey ? viewState.view : fitView
 
   useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    const el = viewportRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) =>
+      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height }),
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
   }, [])
+
+  const zoomAt = (px: number, py: number, factor: number) => {
+    const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * factor))
+    const k = scale / view.scale
+    setViewState({
+      key: viewKey,
+      view: { scale, x: px - (px - view.x) * k, y: py - (py - view.y) * k },
+    })
+  }
 
   const joinScene = useCallback(async (id: string) => {
     const conn = connection.current
@@ -255,13 +285,28 @@ export default function App() {
         </nav>
       </header>
       <main>
+        <div className="viewport" ref={viewportRef}>
         {scene && (
+          <>
           <Stage
-            width={scene.width * fit}
-            height={scene.height * fit}
-            scaleX={fit}
-            scaleY={fit}
+            width={viewport.width}
+            height={viewport.height}
+            x={view.x}
+            y={view.y}
+            scaleX={view.scale}
+            scaleY={view.scale}
+            draggable
             className="stage"
+            onWheel={(e) => {
+              e.evt.preventDefault()
+              const pointer = e.target.getStage()?.getPointerPosition()
+              if (pointer) zoomAt(pointer.x, pointer.y, Math.exp(-e.evt.deltaY * 0.0015))
+            }}
+            onDragEnd={(e) => {
+              // Token drags bubble up here; only react to the stage itself being panned.
+              if (e.target !== e.target.getStage()) return
+              setViewState({ key: viewKey, view: { ...view, x: e.target.x(), y: e.target.y() } })
+            }}
           >
             <Layer listening={false}>
               <MapImage key={scene.imageUrl ?? 'none'} scene={scene} />
@@ -315,7 +360,15 @@ export default function App() {
               })}
             </Layer>
           </Stage>
+          <div className="zoom-controls">
+            <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.25)} aria-label="Zoom out">−</button>
+            <span>{Math.round(view.scale * 100)}%</span>
+            <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1.25)} aria-label="Zoom in">+</button>
+            <button onClick={() => setViewState(null)}>Fit</button>
+          </div>
+          </>
         )}
+        </div>
         <aside>
           {error && (
             <p className="error" role="alert">

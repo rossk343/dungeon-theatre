@@ -43,6 +43,7 @@ Tokens are a game-wide library; scenes only store placements. From the sidebar y
 ## Map images and grid
 - Create a scene from the **New scene** panel (name plus a PNG, JPEG, WebP or GIF), or use **Replace map image** on an existing scene.
 - Uploads are limited to 25 MB and 10000x10000 px. The server identifies the file type from its bytes (not the filename), stores it under `server/DungeonTheatre.Api/uploads/` with a random name and serves it at `/uploads/...`. That folder is git-ignored.
+- **Navigation:** scroll to zoom toward the cursor, drag empty space to pan, and use the +/−/Fit buttons in the corner. The view is local to each browser and resets to fit when you switch scenes.
 - **Grid** panel: set the square size and X/Y offset to match the map's printed squares. Changes preview live and are shared with everyone when you press **Save grid**.
 - Token positions are stored in map pixels, so recalibrating the grid never moves tokens.
 
