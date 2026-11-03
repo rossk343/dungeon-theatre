@@ -3,7 +3,7 @@ using DungeonTheatre.Api;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();
-builder.Services.AddSingleton<TokenStore>();
+builder.Services.AddSingleton<GameStore>();
 
 var app = builder.Build();
 

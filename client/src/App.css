@@ -44,3 +44,63 @@ h1 {
   border: 1px solid #3a3347;
   width: fit-content;
 }
+
+nav {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  background: #2a2535;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+button.active {
+  background: #5a3a6b;
+}
+
+main {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+aside {
+  min-width: 320px;
+}
+
+aside h2 {
+  margin: 0 0 8px;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.token-row input {
+  background: #1f1b28;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 3px 6px;
+  width: 90px;
+}
+
+.token-row input[type='number'] {
+  width: 50px;
+}
+
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+}
