@@ -1,3 +1,6 @@
+using DungeonTheatre.Api.Data;
+using Microsoft.EntityFrameworkCore;
+
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
@@ -10,84 +13,66 @@ public record Placement(string SceneId, string TokenId, double X, double Y);
 
 public record GameState(IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens);
 
-// In-memory for the vertical slice; replaced by EF Core later.
-public class GameStore
+// Scoped: one DbContext per hub invocation.
+public class GameStore(GameDbContext db)
 {
-    private readonly object _lock = new();
-    private readonly List<Scene> _scenes =
-    [
-        new("crypt", "The Sunken Crypt", 1200, 720, 60),
-        new("bridge", "Bridge of Sighs", 1200, 720, 80),
-    ];
-    private readonly Dictionary<string, Token> _tokens = new()
-    {
-        ["t1"] = new("t1", "Knight", "#b23a48", 34, 34),
-        ["t2"] = new("t2", "Rogue", "#3a7ca5", 22, 22),
-        ["t3"] = new("t3", "Wraith", "#6b5b95", 45, 45),
-    };
-    private readonly List<Placement> _placements =
-    [
-        new("crypt", "t1", 150, 150),
-        new("crypt", "t2", 270, 150),
-        new("crypt", "t3", 390, 270),
-        new("bridge", "t1", 120, 120),
-        new("bridge", "t2", 200, 120),
-    ];
+    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);
 
-    public GameState GetState()
+    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp);
+
+    public async Task<GameState> GetStateAsync()
     {
-        lock (_lock) return new GameState(_scenes.ToList(), _tokens.Values.ToList());
+        var scenes = await db.Scenes.AsNoTracking().OrderBy(s => s.Name)
+            .Select(s => new Scene(s.Id, s.Name, s.Width, s.Height, s.GridSize)).ToListAsync();
+        var tokens = await db.Tokens.AsNoTracking().OrderBy(t => t.Name)
+            .Select(t => new Token(t.Id, t.Name, t.Color, t.Hp, t.MaxHp)).ToListAsync();
+        return new GameState(scenes, tokens);
     }
 
-    public bool SceneExists(string sceneId)
-    {
-        lock (_lock) return _scenes.Any(s => s.Id == sceneId);
-    }
+    public Task<bool> SceneExistsAsync(string sceneId) => db.Scenes.AnyAsync(s => s.Id == sceneId);
 
-    public List<Placement> GetPlacements(string sceneId)
-    {
-        lock (_lock) return _placements.Where(p => p.SceneId == sceneId).ToList();
-    }
+    public async Task<List<Placement>> GetPlacementsAsync(string sceneId) =>
+        await db.Placements.AsNoTracking().Where(p => p.SceneId == sceneId)
+            .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y)).ToListAsync();
 
     // Adds the placement, or moves it if the token is already on the scene.
-    public Placement? SetPlacement(string sceneId, string tokenId, double x, double y)
+    public async Task<Placement?> SetPlacementAsync(string sceneId, string tokenId, double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) return null;
-        lock (_lock)
-        {
-            if (!_tokens.ContainsKey(tokenId) || !_scenes.Any(s => s.Id == sceneId)) return null;
-            var placement = new Placement(sceneId, tokenId, x, y);
-            var i = _placements.FindIndex(p => p.SceneId == sceneId && p.TokenId == tokenId);
-            if (i >= 0) _placements[i] = placement;
-            else _placements.Add(placement);
-            return placement;
-        }
+        if (!await db.Scenes.AnyAsync(s => s.Id == sceneId) || !await db.Tokens.AnyAsync(t => t.Id == tokenId))
+            return null;
+
+        var entity = await db.Placements.FindAsync(sceneId, tokenId);
+        if (entity is null)
+            db.Placements.Add(entity = new PlacementEntity { SceneId = sceneId, TokenId = tokenId, X = x, Y = y });
+        else
+            (entity.X, entity.Y) = (x, y);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
     }
 
-    public Placement? MovePlacement(string sceneId, string tokenId, double x, double y)
+    public async Task<Placement?> MovePlacementAsync(string sceneId, string tokenId, double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) return null;
-        lock (_lock)
-        {
-            var i = _placements.FindIndex(p => p.SceneId == sceneId && p.TokenId == tokenId);
-            if (i < 0) return null;
-            return _placements[i] = _placements[i] with { X = x, Y = y };
-        }
+        var entity = await db.Placements.FindAsync(sceneId, tokenId);
+        if (entity is null) return null;
+        (entity.X, entity.Y) = (x, y);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
     }
 
-    public bool RemovePlacement(string sceneId, string tokenId)
-    {
-        lock (_lock) return _placements.RemoveAll(p => p.SceneId == sceneId && p.TokenId == tokenId) > 0;
-    }
+    public async Task<bool> RemovePlacementAsync(string sceneId, string tokenId) =>
+        await db.Placements.Where(p => p.SceneId == sceneId && p.TokenId == tokenId).ExecuteDeleteAsync() > 0;
 
-    public Token? UpdateToken(string tokenId, string name, int hp)
+    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp)
     {
         name = name.Trim();
         if (name.Length is 0 or > 40) return null;
-        lock (_lock)
-        {
-            if (!_tokens.TryGetValue(tokenId, out var token)) return null;
-            return _tokens[tokenId] = token with { Name = name, Hp = Math.Clamp(hp, 0, token.MaxHp) };
-        }
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return null;
+        entity.Name = name;
+        entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
     }
 }

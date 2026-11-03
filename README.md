@@ -34,4 +34,12 @@ npm run dev
 Open http://localhost:5173 in two browser tabs and drag a token; it moves in both. Vite proxies `/hubs` and `/api` to the API on port 5092.
 
 ## Status
-Vertical slice: grid canvas with a scene switcher, a game-wide token library (name, HP) and per-scene placements, all synced over SignalR. Tokens keep their properties across scenes; a scene only stores where each token sits. State is in memory.
+Vertical slice: grid canvas with a scene switcher, a game-wide token library (name, HP) and per-scene placements, all synced over SignalR. Tokens keep their properties across scenes; a scene only stores where each token sits. State is persisted in SQLite via EF Core (`dungeon-theatre.db`, created and seeded on first run; migrations apply automatically on startup).
+
+## Database changes
+```
+cd server/DungeonTheatre.Api
+dotnet tool install --global dotnet-ef
+dotnet ef migrations add <Name> -o Data/Migrations
+```
+Delete `dungeon-theatre.db` to reset to the seed data.
