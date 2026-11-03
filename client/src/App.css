@@ -1,0 +1,46 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #14111a;
+  color: #e8e0d0;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.app {
+  padding: 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  letter-spacing: 0.08em;
+}
+
+.status {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #3a3347;
+}
+
+.status.connected {
+  background: #2f5d3a;
+}
+
+.status.disconnected {
+  background: #7a2a2a;
+}
+
+.stage {
+  background: #1f1b28;
+  border: 1px solid #3a3347;
+  width: fit-content;
+}

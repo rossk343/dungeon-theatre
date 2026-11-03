@@ -20,5 +20,18 @@ client/   React front end
 4. Permissions (GM vs player, hidden tokens)
 5. Fog of war, chat and dice, measuring, initiative
 
+## Running (requires .NET 10 SDK and Node 20.19+)
+```
+# terminal 1
+cd server/DungeonTheatre.Api
+dotnet run --launch-profile http
+
+# terminal 2
+cd client
+npm install
+npm run dev
+```
+Open http://localhost:5173 in two browser tabs and drag a token; it moves in both. Vite proxies `/hubs` and `/api` to the API on port 5092.
+
 ## Status
-Early planning. Nothing is scaffolded yet.
+Vertical slice: grid canvas, three draggable tokens with snap-to-grid, and SignalR sync. Token state is in memory.
