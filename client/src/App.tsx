@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
 import { Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
-import { createScene, createToken, deleteScene, deleteToken, replaceSceneImage, setTokenImage } from './api'
+import {
+  createChapter, createScene, createToken, deleteChapter, deleteScene, deleteToken, moveScene, renameChapter,
+  replaceSceneImage, setTokenImage,
+} from './api'
+import { ChapterTree } from './ChapterTree'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
-import type { GameState, GridPreview, Placement, Scene, Token } from './types'
+import type { Chapter, GameState, GridPreview, Placement, Scene, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -26,7 +30,8 @@ function fitToViewport(scene: Scene, viewport: { width: number; height: number }
 const snap = (v: number, grid: number, offset: number) =>
   Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
 
-const byName = (a: Scene, b: Scene) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+const bySort = (a: { sortOrder: number; name: string }, b: { sortOrder: number; name: string }) =>
+  a.sortOrder - b.sortOrder || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
 
 function MapImage({ scene }: { scene: Scene }) {
   const [image] = useImage(scene.imageUrl ?? '')
@@ -45,6 +50,8 @@ function GridLines({ scene }: { scene: Scene }) {
 
 export default function App() {
   const [scenes, setScenes] = useState<Scene[]>([])
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [gameName, setGameName] = useState('')
   const [tokens, setTokens] = useState<Token[]>([])
   const [placements, setPlacements] = useState<Placement[]>([])
   const [sceneId, setSceneId] = useState<string | null>(null)
@@ -105,9 +112,15 @@ export default function App() {
 
   const applyScene = useCallback((s: Scene) => {
     setScenes((prev) =>
-      prev.some((x) => x.id === s.id) ? prev.map((x) => (x.id === s.id ? s : x)) : [...prev, s].sort(byName),
+      (prev.some((x) => x.id === s.id) ? prev.map((x) => (x.id === s.id ? s : x)) : [...prev, s]).sort(bySort),
     )
     setPreview((p) => (p?.sceneId === s.id ? null : p))
+  }, [])
+
+  const applyChapter = useCallback((c: Chapter) => {
+    setChapters((prev) =>
+      (prev.some((x) => x.id === c.id) ? prev.map((x) => (x.id === c.id ? c : x)) : [...prev, c]).sort(bySort),
+    )
   }, [])
 
   const applyToken = useCallback((t: Token) => {
@@ -142,6 +155,9 @@ export default function App() {
       setTokens((prev) => prev.filter((t) => t.id !== id))
       setPlacements((prev) => prev.filter((p) => p.tokenId !== id))
     })
+    conn.on('ChapterAdded', applyChapter)
+    conn.on('ChapterUpdated', applyChapter)
+    conn.on('ChapterDeleted', (id: string) => setChapters((prev) => prev.filter((c) => c.id !== id)))
     conn.on('SceneAdded', applyScene)
     conn.on('SceneUpdated', applyScene)
     conn.on('SceneDeleted', (id: string) => {
@@ -160,9 +176,13 @@ export default function App() {
     // Initial load and reconnect both rejoin the current scene.
     const load = async () => {
       const state = await conn.invoke<GameState>('GetState')
+      setGameName(state.gameName)
+      setChapters(state.chapters)
       setScenes(state.scenes)
       setTokens(state.tokens)
-      const id = sceneRef.current ?? state.scenes[0]?.id
+      // Open the first scene in chapter order, not the raw first scene.
+      const first = state.chapters.flatMap((c) => state.scenes.filter((s) => s.chapterId === c.id))[0]
+      const id = sceneRef.current ?? first?.id
       if (id) await joinScene(id)
       setStatus('connected')
     }
@@ -175,7 +195,7 @@ export default function App() {
     return () => {
       void conn.stop()
     }
-  }, [joinScene, applyScene, applyToken])
+  }, [joinScene, applyScene, applyChapter, applyToken])
 
   const invoke = (method: string, ...args: unknown[]) =>
     connection.current?.invoke(method, ...args).catch(() => {})
@@ -193,13 +213,32 @@ export default function App() {
     }
   }
 
-  const handleCreate = async (name: string, file: File) => {
-    const s = await run(() => createScene(name, file))
+  const handleCreate = async (chapterId: string, name: string, file: File) => {
+    const s = await run(() => createScene(chapterId, name, file))
     if (s) {
       applyScene(s)
       await joinScene(s.id)
     }
     return s !== null
+  }
+
+  const handleAddChapter = async (name: string) => {
+    const c = await run(() => createChapter(name))
+    if (c) applyChapter(c)
+    return c !== null
+  }
+
+  const handleRenameChapter = async (chapterId: string, name: string) => {
+    const c = await run(() => renameChapter(chapterId, name))
+    if (c) applyChapter(c)
+  }
+
+  const handleDeleteChapter = (chapterId: string) => void run(() => deleteChapter(chapterId))
+
+  const handleMoveScene = async (chapterId: string) => {
+    if (!savedScene) return
+    const s = await run(() => moveScene(savedScene.id, chapterId))
+    if (s) applyScene(s)
   }
 
   const handleReplaceImage = async (file: File) => {
@@ -272,17 +311,7 @@ export default function App() {
       <header>
         <h1>Dungeon Theatre</h1>
         <span className={`status ${status}`}>{status}</span>
-        <nav>
-          {scenes.map((s) => (
-            <button
-              key={s.id}
-              className={s.id === sceneId ? 'active' : ''}
-              onClick={() => void joinScene(s.id)}
-            >
-              {s.name}
-            </button>
-          ))}
-        </nav>
+        {gameName && <span className="game-name">{gameName}</span>}
       </header>
       <main>
         <div className="viewport" ref={viewportRef}>
@@ -375,19 +404,35 @@ export default function App() {
               {error}
             </p>
           )}
+          <ChapterTree
+            chapters={chapters}
+            scenes={scenes}
+            sceneId={sceneId}
+            onSelect={(id) => void joinScene(id)}
+            onAdd={handleAddChapter}
+            onRename={(id, name) => void handleRenameChapter(id, name)}
+            onDelete={handleDeleteChapter}
+          />
           {savedScene && (
             <SceneSettings
-              key={`${savedScene.id}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
+              key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
               scene={savedScene}
+              chapters={chapters}
               busy={uploading}
               onPreview={setPreview}
               onSave={saveGrid}
               onReplaceImage={(f) => void handleReplaceImage(f)}
               onRename={renameScene}
+              onMove={(id) => void handleMoveScene(id)}
               onDelete={handleDeleteScene}
             />
           )}
-          <NewSceneForm busy={uploading} onCreate={handleCreate} />
+          <NewSceneForm
+            busy={uploading}
+            chapters={chapters}
+            defaultChapterId={savedScene?.chapterId ?? null}
+            onCreate={handleCreate}
+          />
           <NewTokenForm busy={uploading} onCreate={handleCreateToken} />
           <section className="panel">
             <h2>Tokens</h2>

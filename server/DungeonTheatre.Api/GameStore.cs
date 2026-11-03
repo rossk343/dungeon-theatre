@@ -6,17 +6,23 @@ namespace DungeonTheatre.Api;
 // Persistent identity; shared across every scene.
 public record Token(string Id, string Name, string Color, int Hp, int MaxHp, string? ImageUrl);
 
+public record Chapter(string Id, string Name, int SortOrder);
+
 public record Scene(
-    string Id, string Name, int Width, int Height, int GridSize, int GridOffsetX, int GridOffsetY, string? ImageUrl);
+    string Id, string ChapterId, string Name, int SortOrder, int Width, int Height, int GridSize,
+    int GridOffsetX, int GridOffsetY, int FeetPerSquare, string? ImageUrl);
 
 // Where a token sits on one scene, in map pixel coordinates.
 public record Placement(string SceneId, string TokenId, double X, double Y);
 
-public record GameState(IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens);
+public record GameState(string GameName, IReadOnlyList<Chapter> Chapters, IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens);
 
 // Scoped: one DbContext per hub invocation.
 public class GameStore(GameDbContext db)
 {
+    // One game until accounts exist; every query is already scoped through it.
+    public const string DefaultGameId = "default";
+
     private const int DefaultGridSize = 70;
     private const int MinGridSize = 10;
     private const int MaxGridSize = 500;
@@ -25,21 +31,92 @@ public class GameStore(GameDbContext db)
 
     private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.ImageUrl);
 
+    private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
+
     private static Scene ToDto(SceneEntity s) =>
-        new(s.Id, s.Name, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY, s.ImageUrl);
+        new(s.Id, s.ChapterId, s.Name, s.SortOrder, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY,
+            s.FeetPerSquare, s.ImageUrl);
 
     public async Task<GameState> GetStateAsync()
     {
-        var scenes = await db.Scenes.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
-        var tokens = await db.Tokens.AsNoTracking().OrderBy(t => t.Name).ToListAsync();
-        return new GameState(scenes.Select(ToDto).ToList(), tokens.Select(ToDto).ToList());
+        var game = await db.Games.AsNoTracking().FirstOrDefaultAsync(g => g.Id == DefaultGameId);
+        var chapters = await db.Chapters.AsNoTracking().Where(c => c.GameId == DefaultGameId)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToListAsync();
+        var scenes = await db.Scenes.AsNoTracking()
+            .Where(s => db.Chapters.Any(c => c.Id == s.ChapterId && c.GameId == DefaultGameId))
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToListAsync();
+        var tokens = await db.Tokens.AsNoTracking().Where(t => t.GameId == DefaultGameId).OrderBy(t => t.Name).ToListAsync();
+        return new GameState(game?.Name ?? "", chapters.Select(ToDto).ToList(), scenes.Select(ToDto).ToList(),
+            tokens.Select(ToDto).ToList());
     }
 
-    public async Task<Scene> CreateSceneAsync(string name, string imageUrl, int width, int height)
+    public Task<bool> ChapterExistsAsync(string chapterId) =>
+        db.Chapters.AnyAsync(c => c.Id == chapterId && c.GameId == DefaultGameId);
+
+    public async Task<Chapter?> CreateChapterAsync(string name)
     {
+        name = name.Trim();
+        if (!IsValidName(name, 100)) return null;
+        var next = await db.Chapters.Where(c => c.GameId == DefaultGameId).MaxAsync(c => (int?)c.SortOrder) ?? -1;
+        var entity = new ChapterEntity
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            GameId = DefaultGameId,
+            Name = name,
+            SortOrder = next + 1,
+        };
+        db.Chapters.Add(entity);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public async Task<Chapter?> RenameChapterAsync(string chapterId, string name)
+    {
+        name = name.Trim();
+        if (!IsValidName(name, 100)) return null;
+        var entity = await db.Chapters.FirstOrDefaultAsync(c => c.Id == chapterId && c.GameId == DefaultGameId);
+        if (entity is null) return null;
+        entity.Name = name;
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public enum DeleteChapterResult { Deleted, NotFound, NotEmpty }
+
+    public async Task<DeleteChapterResult> DeleteChapterAsync(string chapterId)
+    {
+        var entity = await db.Chapters.FirstOrDefaultAsync(c => c.Id == chapterId && c.GameId == DefaultGameId);
+        if (entity is null) return DeleteChapterResult.NotFound;
+        if (await db.Scenes.AnyAsync(s => s.ChapterId == chapterId)) return DeleteChapterResult.NotEmpty;
+        db.Chapters.Remove(entity);
+        await db.SaveChangesAsync();
+        return DeleteChapterResult.Deleted;
+    }
+
+    // Moves a scene to the end of another chapter.
+    public async Task<Scene?> MoveSceneAsync(string sceneId, string chapterId)
+    {
+        if (!await ChapterExistsAsync(chapterId)) return null;
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null) return null;
+        if (entity.ChapterId != chapterId)
+        {
+            var next = await db.Scenes.Where(s => s.ChapterId == chapterId).MaxAsync(s => (int?)s.SortOrder) ?? -1;
+            (entity.ChapterId, entity.SortOrder) = (chapterId, next + 1);
+            await db.SaveChangesAsync();
+        }
+        return ToDto(entity);
+    }
+
+    public async Task<Scene?> CreateSceneAsync(string chapterId, string name, string imageUrl, int width, int height)
+    {
+        if (!await ChapterExistsAsync(chapterId)) return null;
+        var next = await db.Scenes.Where(s => s.ChapterId == chapterId).MaxAsync(s => (int?)s.SortOrder) ?? -1;
         var entity = new SceneEntity
         {
             Id = Guid.NewGuid().ToString("N"),
+            ChapterId = chapterId,
+            SortOrder = next + 1,
             Name = name,
             Width = width,
             Height = height,
@@ -152,6 +229,7 @@ public class GameStore(GameDbContext db)
         var entity = new TokenEntity
         {
             Id = Guid.NewGuid().ToString("N"),
+            GameId = DefaultGameId,
             Name = name,
             Color = color,
             Hp = maxHp,

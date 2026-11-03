@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MAX_GRID, MIN_GRID, type GridPreview, type Scene } from './types'
+import { MAX_GRID, MIN_GRID, type Chapter, type GridPreview, type Scene } from './types'
 
 const parse = (s: string, min: number, max: number, fallback: number) => {
   const n = Math.round(Number(s))
@@ -8,16 +8,20 @@ const parse = (s: string, min: number, max: number, fallback: number) => {
 
 interface SettingsProps {
   scene: Scene
+  chapters: Chapter[]
   busy: boolean
   onPreview: (p: GridPreview) => void
   onSave: (gridSize: number, offsetX: number, offsetY: number) => void
   onReplaceImage: (file: File) => void
   onRename: (name: string) => void
+  onMove: (chapterId: string) => void
   onDelete: () => void
 }
 
 // Remounted (via key) whenever the saved scene changes, so inputs always match the server.
-export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage, onRename, onDelete }: SettingsProps) {
+export function SceneSettings({
+  scene, chapters, busy, onPreview, onSave, onReplaceImage, onRename, onMove, onDelete,
+}: SettingsProps) {
   const [name, setName] = useState(scene.name)
   const [size, setSize] = useState(String(scene.gridSize))
   const [ox, setOx] = useState(String(scene.gridOffsetX))
@@ -67,6 +71,16 @@ export function SceneSettings({ scene, busy, onPreview, onSave, onReplaceImage, 
           Rename
         </button>
       </div>
+      <label>
+        Chapter
+        <select value={scene.chapterId} onChange={(e) => onMove(e.target.value)}>
+          {chapters.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <h2 className="sub">Grid</h2>
       <p className="hint">Match the lines to the squares printed on the map. Changes preview live.</p>
       <label>
@@ -179,18 +193,33 @@ export function NewTokenForm({
 
 export function NewSceneForm({
   busy,
+  chapters,
+  defaultChapterId,
   onCreate,
 }: {
   busy: boolean
-  onCreate: (name: string, file: File) => Promise<boolean>
+  chapters: Chapter[]
+  defaultChapterId: string | null
+  onCreate: (chapterId: string, name: string, file: File) => Promise<boolean>
 }) {
   const [name, setName] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [chosen, setChosen] = useState<string | null>(null)
   const [inputKey, setInputKey] = useState(0)
+  // Fall back to the current scene's chapter, then the first, if the chosen one no longer exists.
+  const chapterId =
+    [chosen, defaultChapterId].find((c) => c && chapters.some((x) => x.id === c)) ?? chapters[0]?.id ?? ''
 
   return (
     <section className="panel">
       <h2>New scene</h2>
+      <select value={chapterId} aria-label="Chapter" disabled={chapters.length === 0} onChange={(e) => setChosen(e.target.value)}>
+        {chapters.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
       <input placeholder="Scene name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
       <input
         key={inputKey}
@@ -198,11 +227,12 @@ export function NewSceneForm({
         accept="image/png,image/jpeg,image/webp,image/gif"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
       />
+      {chapters.length === 0 && <p className="hint">Add a chapter first.</p>}
       <button
-        disabled={busy || !file || !name.trim()}
+        disabled={busy || !file || !name.trim() || !chapterId}
         onClick={async () => {
           if (!file) return
-          if (await onCreate(name.trim(), file)) {
+          if (await onCreate(chapterId, name.trim(), file)) {
             setName('')
             setFile(null)
             setInputKey((k) => k + 1)

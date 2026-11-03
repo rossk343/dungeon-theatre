@@ -39,6 +39,7 @@ app.UseStaticFiles(new StaticFileOptions
 app.MapHub<GameHub>("/hubs/game");
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 app.MapSceneEndpoints();
+app.MapChapterEndpoints();
 app.MapTokenEndpoints();
 
 app.Run();

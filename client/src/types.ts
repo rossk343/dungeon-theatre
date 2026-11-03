@@ -7,14 +7,23 @@ export interface Token {
   imageUrl: string | null
 }
 
-export interface Scene {
+export interface Chapter {
   id: string
   name: string
+  sortOrder: number
+}
+
+export interface Scene {
+  id: string
+  chapterId: string
+  name: string
+  sortOrder: number
   width: number
   height: number
   gridSize: number
   gridOffsetX: number
   gridOffsetY: number
+  feetPerSquare: number
   imageUrl: string | null
 }
 
@@ -26,6 +35,8 @@ export interface Placement {
 }
 
 export interface GameState {
+  gameName: string
+  chapters: Chapter[]
   scenes: Scene[]
   tokens: Token[]
 }

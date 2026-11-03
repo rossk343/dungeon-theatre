@@ -1,7 +1,12 @@
-import type { Scene, Token } from './types'
+import type { Chapter, Scene, Token } from './types'
 
-async function request<T>(url: string, method: string, body?: FormData): Promise<T> {
-  const res = await fetch(url, { method, body })
+async function request<T>(url: string, method: string, body?: FormData, json?: unknown): Promise<T> {
+  const res = await fetch(
+    url,
+    json === undefined
+      ? { method, body }
+      : { method, body: JSON.stringify(json), headers: { 'Content-Type': 'application/json' } },
+  )
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => null)
   if (!res.ok) throw new Error(data?.error ?? `Request failed (${res.status})`)
@@ -10,8 +15,25 @@ async function request<T>(url: string, method: string, body?: FormData): Promise
 
 const id = encodeURIComponent
 
-export function createScene(name: string, file: File): Promise<Scene> {
+export function createChapter(name: string): Promise<Chapter> {
+  return request('/api/chapters', 'POST', undefined, { name })
+}
+
+export function renameChapter(chapterId: string, name: string): Promise<Chapter> {
+  return request(`/api/chapters/${id(chapterId)}`, 'PUT', undefined, { name })
+}
+
+export function deleteChapter(chapterId: string): Promise<void> {
+  return request(`/api/chapters/${id(chapterId)}`, 'DELETE')
+}
+
+export function moveScene(sceneId: string, chapterId: string): Promise<Scene> {
+  return request(`/api/scenes/${id(sceneId)}/chapter`, 'PUT', undefined, { chapterId })
+}
+
+export function createScene(chapterId: string, name: string, file: File): Promise<Scene> {
   const form = new FormData()
+  form.append('chapterId', chapterId)
   form.append('name', name)
   form.append('file', file)
   return request('/api/scenes', 'POST', form)
