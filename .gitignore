@@ -1,0 +1,26 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.db
+*.db-shm
+*.db-wal
+appsettings.Development.json
+
+# Node
+node_modules/
+dist/
+*.log
+.vite/
+
+# Env and uploads
+.env
+.env.*
+server/**/uploads/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
