@@ -64,13 +64,29 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
 
     public Task<GameState> GetState() => store.GetStateAsync();
 
-    public async Task<string?> SetActiveScene(string sceneId)
+    public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {
         RequireGm();
+        if (!double.IsFinite(centerX) || !double.IsFinite(centerY) || !double.IsFinite(zoom) || zoom <= 0)
+            throw new HubException("The shared map view is invalid.");
         var activeSceneId = await store.SetActiveSceneAsync(sceneId);
         if (activeSceneId is not null)
-            await Clients.All.SendAsync("ActiveSceneChanged", activeSceneId);
+            await Clients.All.SendAsync("ActiveSceneChanged", activeSceneId, new { centerX, centerY, zoom });
         return activeSceneId;
+    }
+
+    public async Task SetPlayerView(string sceneId, double centerX, double centerY, double zoom)
+    {
+        RequireGm();
+        if (!double.IsFinite(centerX) || !double.IsFinite(centerY) || !double.IsFinite(zoom) || zoom <= 0)
+            throw new HubException("The shared map view is invalid.");
+        if (sceneId != await store.GetActiveSceneIdAsync())
+            throw new HubException("Only the active scene view can be shared with players.");
+
+        await Clients.OthersInGroup(Group(sceneId)).SendAsync(
+            "PlayerViewChanged",
+            sceneId,
+            new { centerX, centerY, zoom });
     }
 
     // A connection watches one scene at a time.

@@ -27,6 +27,12 @@ type View = {
   viewportHeight?: number
 }
 
+type SharedView = {
+  centerX: number
+  centerY: number
+  zoom: number
+}
+
 const VIEWS_KEY = 'sceneViews'
 
 // Views survive reloads; anything malformed is dropped.
@@ -87,6 +93,35 @@ function adaptViewToViewport(
     y: viewport.height / 2 - centerY * scale,
     viewportWidth: viewport.width,
     viewportHeight: viewport.height,
+  }
+}
+
+function viewFromShared(
+  scene: Scene,
+  sharedView: SharedView,
+  viewport: { width: number; height: number },
+): View {
+  const fit = fitToViewport(scene, viewport)
+  const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, fit.scale * sharedView.zoom))
+  return {
+    scale,
+    x: viewport.width / 2 - sharedView.centerX * scale,
+    y: viewport.height / 2 - sharedView.centerY * scale,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+  }
+}
+
+function shareableView(
+  scene: Scene,
+  view: View,
+  viewport: { width: number; height: number },
+): SharedView {
+  const fit = fitToViewport(scene, viewport)
+  return {
+    centerX: (viewport.width / 2 - view.x) / view.scale,
+    centerY: (viewport.height / 2 - view.y) / view.scale,
+    zoom: view.scale / fit.scale,
   }
 }
 
@@ -280,12 +315,42 @@ export default function App() {
     conn.on('ChapterDeleted', (id: string) => setChapters((prev) => prev.filter((c) => c.id !== id)))
     conn.on('SceneAdded', applyScene)
     conn.on('SceneUpdated', applyScene)
-    conn.on('ActiveSceneChanged', (id: string | null) => {
+    conn.on('ActiveSceneChanged', (id: string | null, sharedView?: SharedView) => {
       setActiveSceneId(id)
-      if (id && sceneRef.current !== id)
-        void joinScene(id).catch((e: unknown) =>
+      if (!id) return
+      const applyView = () => {
+        if (isGm || !sharedView || sceneRef.current !== id) return
+        const activeScene = scenesRef.current.find((item) => item.id === id)
+        const viewportElement = viewportRef.current
+        if (!activeScene || !viewportElement) return
+        const size = { width: viewportElement.clientWidth, height: viewportElement.clientHeight }
+        const key = `${activeScene.id}:${activeScene.imageUrl ?? ''}`
+        setViews((previous) => ({
+          ...previous,
+          [key]: viewFromShared(activeScene, sharedView, size),
+        }))
+      }
+      if (sceneRef.current === id) {
+        applyView()
+        return
+      }
+      void joinScene(id)
+        .then(applyView)
+        .catch((e: unknown) =>
           setError(e instanceof Error ? e.message : 'Could not open the active scene.'),
         )
+    })
+    conn.on('PlayerViewChanged', (id: string, sharedView: SharedView) => {
+      if (isGm || sceneRef.current !== id) return
+      const currentScene = scenesRef.current.find((item) => item.id === id)
+      const viewportElement = viewportRef.current
+      if (!currentScene || !viewportElement) return
+      const size = { width: viewportElement.clientWidth, height: viewportElement.clientHeight }
+      const key = `${currentScene.id}:${currentScene.imageUrl ?? ''}`
+      setViews((previous) => ({
+        ...previous,
+        [key]: viewFromShared(currentScene, sharedView, size),
+      }))
     })
     conn.on('SceneDeleted', (id: string, nextActiveSceneId: string | null) => {
       setScenes((prev) => prev.filter((s) => s.id !== id))
@@ -562,7 +627,23 @@ export default function App() {
   }
 
   const handleSetActiveScene = async (id: string) => {
-    const activeId = await invoke<string | null>('SetActiveScene', id)
+    const targetScene = scenes.find((item) => item.id === id)
+    if (!targetScene) return
+    const targetKey = `${targetScene.id}:${targetScene.imageUrl ?? ''}`
+    const targetView =
+      scene?.id === targetScene.id
+        ? view
+        : views[targetKey]
+          ? adaptViewToViewport(targetScene, views[targetKey], viewport)
+          : fitToViewport(targetScene, viewport)
+    const sharedView = shareableView(targetScene, targetView, viewport)
+    const activeId = await invoke<string | null>(
+      'SetActiveScene',
+      id,
+      sharedView.centerX,
+      sharedView.centerY,
+      sharedView.zoom,
+    )
     if (!activeId) return
     setActiveSceneId(activeId)
     if (sceneRef.current !== activeId) {
@@ -572,6 +653,12 @@ export default function App() {
         setError(e instanceof Error ? e.message : 'Could not open the active scene.')
       }
     }
+  }
+
+  const handleSharePlayerView = () => {
+    if (!scene || scene.id !== activeSceneId || fitView.scale <= 0) return
+    const sharedView = shareableView(scene, view, viewport)
+    void invoke('SetPlayerView', scene.id, sharedView.centerX, sharedView.centerY, sharedView.zoom)
   }
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
@@ -742,6 +829,15 @@ export default function App() {
                   return rest
                 })
               }>Fit</button>
+            {isGm && (
+              <button
+                onClick={handleSharePlayerView}
+                disabled={scene?.id !== activeSceneId}
+                title={scene?.id === activeSceneId ? 'Show players this map view' : 'Switch to the active scene to share its view'}
+              >
+                Show players
+              </button>
+            )}
           </div>
           </>
         )}
