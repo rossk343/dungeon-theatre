@@ -1,11 +1,12 @@
 using DungeonTheatre.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
 public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, int? ArmorClass,
-    bool IsPlayer, string? ImageUrl)
+    int VisionFeet, int LightFeet, bool IsPlayer, string? ImageUrl)
 {
     public Token ForPlayerView() => IsPlayer ? this : this with { ArmorClass = null };
 }
@@ -14,7 +15,10 @@ public record Chapter(string Id, string Name, int SortOrder);
 
 public record Scene(
     string Id, string ChapterId, string Name, int SortOrder, int Width, int Height, int GridSize,
-    int GridOffsetX, int GridOffsetY, int FeetPerSquare, string? ImageUrl);
+    int GridOffsetX, int GridOffsetY, int FeetPerSquare, string? ImageUrl, IReadOnlyList<FogArea> FogAreas);
+
+public record FogPoint(double X, double Y);
+public record FogArea(string Id, IReadOnlyList<FogPoint> Points);
 
 // Where a token sits on one scene, in map pixel coordinates.
 public record Placement(string SceneId, string TokenId, double X, double Y);
@@ -41,13 +45,14 @@ public class GameStore(GameDbContext db)
     public static bool IsValidArmorClass(int armorClass) => armorClass is >= 0 and <= 99;
 
     private static Token ToDto(TokenEntity t) =>
-        new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ArmorClass, t.IsPlayer, t.ImageUrl);
+        new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ArmorClass, t.VisionFeet, t.LightFeet,
+            t.IsPlayer, t.ImageUrl);
 
     private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
 
     private static Scene ToDto(SceneEntity s) =>
         new(s.Id, s.ChapterId, s.Name, s.SortOrder, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY,
-            s.FeetPerSquare, s.ImageUrl);
+            s.FeetPerSquare, s.ImageUrl, JsonSerializer.Deserialize<List<FogArea>>(s.FogAreasJson) ?? []);
 
     public async Task<GameState> GetStateAsync()
     {
@@ -190,6 +195,25 @@ public class GameStore(GameDbContext db)
         return ToDto(entity);
     }
 
+    public async Task<Scene?> UpdateSceneFogAsync(string sceneId, IReadOnlyList<FogArea>? fogAreas)
+    {
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null || fogAreas is null || fogAreas.Count > 25) return null;
+        if (fogAreas.Any(area =>
+                area is null || area.Points is null ||
+                string.IsNullOrWhiteSpace(area.Id) || area.Id.Length > 64 ||
+                area.Points.Count is < 3 or > 100 ||
+                area.Points.Any(point =>
+                    !double.IsFinite(point.X) || !double.IsFinite(point.Y) ||
+                    point.X < 0 || point.X > entity.Width || point.Y < 0 || point.Y > entity.Height)) ||
+            fogAreas.Select(area => area.Id).Distinct(StringComparer.Ordinal).Count() != fogAreas.Count)
+            return null;
+
+        entity.FogAreasJson = JsonSerializer.Serialize(fogAreas);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
     public Task<bool> SceneExistsAsync(string sceneId) => db.Scenes.AnyAsync(s => s.Id == sceneId);
 
     public async Task<List<Placement>> GetPlacementsAsync(string sceneId) =>
@@ -228,6 +252,17 @@ public class GameStore(GameDbContext db)
         return ToDto(entity);
     }
 
+    public async Task<Token?> UpdateTokenLightingAsync(string tokenId, int visionFeet, int lightFeet)
+    {
+        if (!IsValidLightRange(visionFeet) || !IsValidLightRange(lightFeet)) return null;
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return null;
+        entity.VisionFeet = visionFeet;
+        entity.LightFeet = lightFeet;
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
     public static bool IsValidName(string? name, int max) => !string.IsNullOrWhiteSpace(name) && name.Trim().Length <= max;
 
     public async Task<Scene?> RenameSceneAsync(string sceneId, string name)
@@ -260,11 +295,12 @@ public class GameStore(GameDbContext db)
     }
 
     public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, int armorClass,
-        bool isPlayer, string? imageUrl)
+        int visionFeet, int lightFeet, bool isPlayer, string? imageUrl)
     {
         name = name.Trim();
         if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 ||
-            !IsValidSpeed(speedFeet) || !IsValidArmorClass(armorClass))
+            !IsValidSpeed(speedFeet) || !IsValidArmorClass(armorClass) ||
+            !IsValidLightRange(visionFeet) || !IsValidLightRange(lightFeet))
             return null;
         var entity = new TokenEntity
         {
@@ -276,6 +312,8 @@ public class GameStore(GameDbContext db)
             MaxHp = maxHp,
             SpeedFeet = speedFeet,
             ArmorClass = armorClass,
+            VisionFeet = visionFeet,
+            LightFeet = lightFeet,
             IsPlayer = isPlayer,
             ImageUrl = imageUrl,
         };
@@ -298,6 +336,8 @@ public class GameStore(GameDbContext db)
 
     public static bool IsValidColor(string? color) =>
         color is { Length: 7 } && color[0] == '#' && color.Skip(1).All(Uri.IsHexDigit);
+
+    public static bool IsValidLightRange(int rangeFeet) => rangeFeet is >= 0 and <= 999;
 
     public async Task<(Token Token, string? OldImageUrl)?> SetTokenImageAsync(string tokenId, string imageUrl)
     {

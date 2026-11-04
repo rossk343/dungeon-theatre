@@ -6,6 +6,8 @@ export interface Token {
   maxHp: number
   speedFeet: number
   armorClass: number | null
+  visionFeet: number
+  lightFeet: number
   isPlayer: boolean
   imageUrl: string | null
 }
@@ -77,6 +79,17 @@ export interface Scene {
   gridOffsetY: number
   feetPerSquare: number
   imageUrl: string | null
+  fogAreas: FogArea[]
+}
+
+export interface FogPoint {
+  x: number
+  y: number
+}
+
+export interface FogArea {
+  id: string
+  points: FogPoint[]
 }
 
 export interface Placement {

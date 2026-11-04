@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
 import type Konva from 'konva'
-import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
 import {
   createChapter, createScene, createToken, deleteChapter, deleteScene, deleteToken, getAuthStatus, getSession, joinAsGuest,
@@ -13,7 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
-import type { Chapter, Combat, DiceRoll, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
+import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -165,6 +165,9 @@ export default function App() {
   const [sceneId, setSceneId] = useState<string | null>(null)
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [preview, setPreview] = useState<GridPreview | null>(null)
+  const [fogDrawing, setFogDrawing] = useState(false)
+  const [pendingFogPoints, setPendingFogPoints] = useState<FogPoint[]>([])
+  const [fogCursor, setFogCursor] = useState<FogPoint | null>(null)
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -250,6 +253,9 @@ export default function App() {
     if (!conn) return
     sceneRef.current = id
     setSceneId(id)
+    setFogDrawing(false)
+    setPendingFogPoints([])
+    setFogCursor(null)
     setPreview(null)
     setCombat(null)
     const [list, state] = await Promise.all([
@@ -536,10 +542,14 @@ export default function App() {
     maxHp: number,
     speedFeet: number,
     armorClass: number,
+    visionFeet: number,
+    lightFeet: number,
     isPlayer: boolean,
     file: File | null,
   ) => {
-    const t = await run(() => createToken(name, color, maxHp, speedFeet, armorClass, isPlayer, file))
+    const t = await run(() =>
+      createToken(name, color, maxHp, speedFeet, armorClass, visionFeet, lightFeet, isPlayer, file),
+    )
     if (t) applyToken(t)
     return t !== null
   }
@@ -558,6 +568,29 @@ export default function App() {
     if (!savedScene) return
     applyScene({ ...savedScene, gridSize, gridOffsetX: offsetX, gridOffsetY: offsetY })
     void invoke('UpdateSceneGrid', savedScene.id, gridSize, offsetX, offsetY)
+  }
+
+  const saveFogAreas = (fogAreas: FogArea[]) => {
+    if (!savedScene) return
+    void invoke<Scene | null>('UpdateSceneFog', savedScene.id, fogAreas).then((updated) => {
+      if (updated) applyScene(updated)
+    })
+  }
+
+  const saveTokenLighting = (token: Token, visionFeet: number, lightFeet: number) => {
+    const next = { ...token, visionFeet, lightFeet }
+    setTokens((prev) => prev.map((item) => (item.id === token.id ? next : item)))
+    void invoke<Token | null>('UpdateTokenLighting', token.id, visionFeet, lightFeet).then((updated) => {
+      if (updated) applyToken(updated)
+    })
+  }
+
+  const finishFogPolygon = () => {
+    if (pendingFogPoints.length < 3 || !scene) return
+    saveFogAreas([...scene.fogAreas, { id: crypto.randomUUID(), points: pendingFogPoints }])
+    setPendingFogPoints([])
+    setFogCursor(null)
+    setFogDrawing(false)
   }
 
   const showNotice = (text: string) => {
@@ -698,6 +731,17 @@ export default function App() {
     typeof turnStartX === 'number' &&
     typeof turnStartY === 'number' &&
     (currentTurnPosition.x !== turnStartX || currentTurnPosition.y !== turnStartY)
+  const visionSources = scene
+    ? placements.flatMap((placement) => {
+        const token = tokenById.get(placement.tokenId)
+        if (!token?.isPlayer) return []
+        const pixelsPerFoot = scene.gridSize / scene.feetPerSquare
+        const visionRadius = token.visionFeet * pixelsPerFoot
+        const lightRadius = token.lightFeet * pixelsPerFoot
+        const visibleRadius = Math.max(visionRadius, lightRadius)
+        return visibleRadius > 0 ? [{ x: placement.x, y: placement.y, visibleRadius, lightRadius }] : []
+      })
+    : []
 
   if (authLoading) {
     return <main className="auth-shell"><p>Entering the campaign hall…</p></main>
@@ -790,8 +834,25 @@ export default function App() {
             y={view.y}
             scaleX={view.scale}
             scaleY={view.scale}
-            draggable
-            className="stage"
+            draggable={!(isGm && fogDrawing)}
+            className={`stage${fogDrawing ? ' drawing-fog' : ''}`}
+            onClick={(e) => {
+              if (!isGm || !fogDrawing || !scene) return
+              const point = e.target.getStage()?.getRelativePointerPosition()
+              if (!point) return
+              setPendingFogPoints((previous) => [
+                ...previous,
+                {
+                  x: Math.min(scene.width, Math.max(0, point.x)),
+                  y: Math.min(scene.height, Math.max(0, point.y)),
+                },
+              ])
+            }}
+            onMouseMove={(e) => {
+              if (!isGm || !fogDrawing || !scene) return
+              const point = e.target.getStage()?.getRelativePointerPosition()
+              if (point) setFogCursor({ x: point.x, y: point.y })
+            }}
             onWheel={(e) => {
               e.evt.preventDefault()
               const pointer = e.target.getStage()?.getPointerPosition()
@@ -835,9 +896,9 @@ export default function App() {
                     radius={radius}
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     draggable={
-                      isGm ||
+                      (isGm && !fogDrawing) ||
                       (t.isPlayer &&
-                        (!combat?.active || combat.currentTokenId === p.tokenId))
+                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing)
                     }
                     onDragMove={(e) => {
                       setDragPreview({ tokenId: p.tokenId, x: e.target.x(), y: e.target.y() })
@@ -896,6 +957,77 @@ export default function App() {
                 )
               })}
             </Layer>
+            <Layer listening={isGm && !fogDrawing}>
+              {!isGm && (
+                <>
+                  <Rect
+                    width={scene.width}
+                    height={scene.height}
+                    fill="rgba(0,0,0,0.9)"
+                    listening={false}
+                  />
+                  {visionSources.map((source, index) => (
+                    <Circle
+                      key={`vision-${index}`}
+                      x={source.x}
+                      y={source.y}
+                      radius={source.visibleRadius}
+                      fill="black"
+                      globalCompositeOperation="destination-out"
+                      listening={false}
+                    />
+                  ))}
+                  {visionSources.filter((source) => source.lightRadius > 0).map((source, index) => (
+                    <Circle
+                      key={`light-${index}`}
+                      x={source.x}
+                      y={source.y}
+                      radius={source.lightRadius}
+                      fill="rgba(255,190,105,0.12)"
+                      listening={false}
+                    />
+                  ))}
+                  {scene.fogAreas.map((area) => (
+                    <Line
+                      key={area.id}
+                      points={area.points.flatMap((point) => [point.x, point.y])}
+                      closed
+                      fill="#08070c"
+                      listening={false}
+                    />
+                  ))}
+                </>
+              )}
+              {isGm && scene.fogAreas.map((area) => (
+                <Line
+                  key={area.id}
+                  points={area.points.flatMap((point) => [point.x, point.y])}
+                  closed
+                  fill="rgba(8,7,12,0.25)"
+                  stroke="#e0b341"
+                  strokeWidth={2}
+                  onClick={(e) => {
+                    e.cancelBubble = true
+                    if (window.confirm('Remove this fog area?'))
+                      saveFogAreas(scene.fogAreas.filter((current) => current.id !== area.id))
+                  }}
+                />
+              ))}
+              {isGm && fogDrawing && pendingFogPoints.length > 0 && (
+                <Line
+                  points={[
+                    ...pendingFogPoints.flatMap((point) => [point.x, point.y]),
+                    ...(fogCursor ? [fogCursor.x, fogCursor.y] : []),
+                  ]}
+                  closed={pendingFogPoints.length >= 3}
+                  fill={pendingFogPoints.length >= 3 ? 'rgba(224,179,65,0.15)' : undefined}
+                  stroke="#e0b341"
+                  strokeWidth={2}
+                  dash={[6, 4]}
+                  listening={false}
+                />
+              )}
+            </Layer>
           </Stage>
           <div className="zoom-controls">
             <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.25)} aria-label="Zoom out">−</button>
@@ -907,6 +1039,36 @@ export default function App() {
                   return rest
                 })
               }>Fit</button>
+            {isGm && (
+              <>
+              <button
+                className={fogDrawing ? 'active' : undefined}
+                aria-pressed={fogDrawing}
+                onClick={() => {
+                  setFogDrawing((drawing) => !drawing)
+                  setPendingFogPoints([])
+                  setFogCursor(null)
+                }}
+              >
+                {fogDrawing ? 'Drawing fog…' : 'Draw fog'}
+              </button>
+              {fogDrawing && (
+                <>
+                  <span className="fog-hint">Click map to add points</span>
+                  <button disabled={pendingFogPoints.length < 3} onClick={finishFogPolygon}>
+                    Finish area
+                  </button>
+                  <button onClick={() => {
+                    setFogDrawing(false)
+                    setPendingFogPoints([])
+                    setFogCursor(null)
+                  }}>
+                    Cancel
+                  </button>
+                </>
+              )}
+              </>
+            )}
             {isGm && (
               <button
                 onClick={handleSharePlayerView}
@@ -1014,6 +1176,7 @@ export default function App() {
                           isGm
                           onScene={placed.has(t.id)}
                           onSave={saveToken}
+                          onSaveLighting={saveTokenLighting}
                           onAdd={() => addToScene(t.id)}
                           onRemove={() => removeFromScene(t.id)}
                           onArt={(f) => void handleTokenArt(t, f)}
@@ -1036,6 +1199,7 @@ export default function App() {
                   isGm={false}
                   onScene={placed.has(t.id)}
                   onSave={saveToken}
+                  onSaveLighting={saveTokenLighting}
                   onAdd={() => addToScene(t.id)}
                   onRemove={() => removeFromScene(t.id)}
                   onArt={(f) => void handleTokenArt(t, f)}
@@ -1057,6 +1221,7 @@ function TokenRow(props: {
   isGm: boolean
   onScene: boolean
   onSave: (t: Token, name: string, hp: number, speedFeet: number, armorClass: number) => void
+  onSaveLighting: (t: Token, visionFeet: number, lightFeet: number) => void
   onAdd: () => void
   onRemove: () => void
   onArt: (file: File) => void
@@ -1167,6 +1332,44 @@ function TokenRow(props: {
           }}
         />
       </label>}
+      {isGm && (
+        <div className="token-lighting-fields">
+          <label className="token-field">
+            <span>Vision (ft)</span>
+            <input
+              key={`v${token.visionFeet}`}
+              type="number"
+              min={0}
+              max={999}
+              aria-label={`${token.name} vision in feet`}
+              defaultValue={token.visionFeet}
+              onBlur={(e) => {
+                const n = Math.round(Number(e.target.value))
+                if (e.target.value !== '' && n >= 0 && n <= 999)
+                  props.onSaveLighting(token, n, token.lightFeet)
+                else e.target.value = String(token.visionFeet)
+              }}
+            />
+          </label>
+          <label className="token-field">
+            <span>Light (ft)</span>
+            <input
+              key={`l${token.lightFeet}`}
+              type="number"
+              min={0}
+              max={999}
+              aria-label={`${token.name} light radius in feet`}
+              defaultValue={token.lightFeet}
+              onBlur={(e) => {
+                const n = Math.round(Number(e.target.value))
+                if (e.target.value !== '' && n >= 0 && n <= 999)
+                  props.onSaveLighting(token, token.visionFeet, n)
+                else e.target.value = String(token.lightFeet)
+              }}
+            />
+          </label>
+        </div>
+      )}
       {isGm && (
         <select
           aria-label={`${token.name} token type`}

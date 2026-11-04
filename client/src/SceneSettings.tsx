@@ -148,6 +148,8 @@ export function NewTokenForm({
     maxHp: number,
     speedFeet: number,
     armorClass: number,
+    visionFeet: number,
+    lightFeet: number,
     isPlayer: boolean,
     file: File | null,
   ) => Promise<boolean>
@@ -157,16 +159,22 @@ export function NewTokenForm({
   const [maxHp, setMaxHp] = useState('10')
   const [speed, setSpeed] = useState('30')
   const [armorClass, setArmorClass] = useState('10')
+  const [vision, setVision] = useState('30')
+  const [light, setLight] = useState('0')
   const [isPlayer, setIsPlayer] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [inputKey, setInputKey] = useState(0)
   const hp = Math.round(Number(maxHp))
   const spd = Math.round(Number(speed))
   const ac = Math.round(Number(armorClass))
+  const visionFeet = Math.round(Number(vision))
+  const lightFeet = Math.round(Number(light))
   const valid =
     name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999 &&
     Number.isFinite(spd) && spd >= 0 && spd <= 999 &&
-    armorClass.trim() !== '' && Number.isFinite(ac) && ac >= 0 && ac <= 99
+    armorClass.trim() !== '' && Number.isFinite(ac) && ac >= 0 && ac <= 99 &&
+    vision.trim() !== '' && Number.isFinite(visionFeet) && visionFeet >= 0 && visionFeet <= 999 &&
+    light.trim() !== '' && Number.isFinite(lightFeet) && lightFeet >= 0 && lightFeet <= 999
 
   return (
     <section className="panel">
@@ -212,6 +220,16 @@ export function NewTokenForm({
           />
         </label>
       </div>
+      <div className="token-create-lighting">
+        <label className="token-create-field">
+          <span>Vision (ft)</span>
+          <input type="number" min={0} max={999} value={vision} onChange={(e) => setVision(e.target.value)} />
+        </label>
+        <label className="token-create-field">
+          <span>Light (ft)</span>
+          <input type="number" min={0} max={999} value={light} onChange={(e) => setLight(e.target.value)} />
+        </label>
+      </div>
       <label className="token-create-field token-create-type">
         <span>Token type</span>
         <select value={String(isPlayer)} onChange={(e) => setIsPlayer(e.target.value === 'true')}>
@@ -232,10 +250,12 @@ export function NewTokenForm({
       <button
         disabled={busy || !valid}
         onClick={async () => {
-          if (await onCreate(name.trim(), color, hp, spd, ac, isPlayer, file)) {
+          if (await onCreate(name.trim(), color, hp, spd, ac, visionFeet, lightFeet, isPlayer, file)) {
             setName('')
             setFile(null)
             setIsPlayer(false)
+            setVision('30')
+            setLight('0')
             setInputKey((k) => k + 1)
           }
         }}

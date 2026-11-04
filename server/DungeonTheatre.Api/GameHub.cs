@@ -216,12 +216,33 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return scene;
     }
 
+    public async Task<Scene?> UpdateSceneFog(string sceneId, IReadOnlyList<FogArea>? fogAreas)
+    {
+        RequireGm();
+        var scene = await store.UpdateSceneFogAsync(sceneId, fogAreas);
+        if (scene is null) throw new HubException("The fog areas are invalid or exceed the supported limits.");
+        await Clients.Others.SendAsync("SceneUpdated", scene);
+        return scene;
+    }
+
     // NPC Armour Class is omitted from player views.
     public async Task<Token?> UpdateToken(string tokenId, string name, int hp, int speedFeet, int armorClass)
     {
         if (!IsGm && !await store.IsPlayerTokenAsync(tokenId))
             throw new HubException("Players can only edit player tokens.");
         var token = await store.UpdateTokenAsync(tokenId, name, hp, speedFeet, armorClass);
+        if (token is not null)
+        {
+            await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);
+            await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", token.ForPlayerView());
+        }
+        return token;
+    }
+
+    public async Task<Token?> UpdateTokenLighting(string tokenId, int visionFeet, int lightFeet)
+    {
+        RequireGm();
+        var token = await store.UpdateTokenLightingAsync(tokenId, visionFeet, lightFeet);
         if (token is not null)
         {
             await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);

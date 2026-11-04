@@ -42,7 +42,7 @@ A game contains chapters, and chapters contain scenes. Use the **Chapters** pane
 
 The GM can mark a scene as **Active** in the scene list. Changing the active scene switches connected players to it, and players cannot join other scenes until the GM changes the active scene again.
 
-Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, speed, armour class, optional art), replace their art, or delete them. Armour class is editable for all tokens by the GM and for player tokens by players; NPC armour class is GM-only. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
+Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, speed, armour class, vision and light ranges, optional art), replace their art, or delete them. Armour class is editable for all tokens by the GM and for player tokens by players; NPC armour class is GM-only. Vision and light ranges are GM-managed and default to 30 ft and 0 ft. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
 
 ## Initiative and movement
 
@@ -62,6 +62,7 @@ The GM manages scenes, chapters, token creation and placement, and combat setup.
 - **Navigation:** scroll to zoom toward the cursor, drag empty space to pan, and use the +/−/Fit buttons in the corner. Views are local to each browser; changing the active scene sends players the view the GM will use for that scene, and **Show players** shares the current view again.
 - **Grid** panel: set the square size and X/Y offset to match the map's printed squares. Changes preview live and are shared with everyone when you press **Save grid**.
 - Token positions are stored in map pixels, so recalibrating the grid never moves tokens.
+- Players see a circular area around placed player tokens, using the larger of each token's vision and light ranges. Distances are converted through the scene's grid size and feet-per-square setting. The GM sees the full map. Use **Draw fog** and click map points to add an opaque polygon that stays hidden from players; **Finish area** saves it, and clicking a gold-outlined area lets the GM remove it. Fog polygons hide areas even inside token vision; automatic vision does not account for walls.
 
 ## Database changes
 ```

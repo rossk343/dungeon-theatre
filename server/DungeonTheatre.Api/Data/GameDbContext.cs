@@ -47,6 +47,8 @@ public class TokenEntity
     public int MaxHp { get; set; }
     public int SpeedFeet { get; set; } = 30;
     public int ArmorClass { get; set; } = 10;
+    public int VisionFeet { get; set; } = 30;
+    public int LightFeet { get; set; }
     // Player tokens can be edited and moved by any player; the rest belong to the GM.
     public bool IsPlayer { get; set; }
     public string? ImageUrl { get; set; }
@@ -85,6 +87,7 @@ public class SceneEntity
     public int GridOffsetX { get; set; }
     public int GridOffsetY { get; set; }
     public string? ImageUrl { get; set; }
+    public string FogAreasJson { get; set; } = "[]";
 }
 
 // Composite key: a token appears at most once per scene.

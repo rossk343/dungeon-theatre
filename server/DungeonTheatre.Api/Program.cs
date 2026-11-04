@@ -8,7 +8,7 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options => options.MaximumReceiveMessageSize = 128 * 1024);
 builder.Services.AddDbContext<GameDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Game") ?? "Data Source=dungeon-theatre.db"));
 builder.Services.AddScoped<GameStore>();

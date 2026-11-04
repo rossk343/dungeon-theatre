@@ -141,6 +141,10 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<int>("FeetPerSquare")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("FogAreasJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("GridOffsetX")
                         .HasColumnType("INTEGER");
 
@@ -199,6 +203,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<bool>("IsPlayer")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("LightFeet")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MaxHp")
                         .HasColumnType("INTEGER");
 
@@ -208,6 +215,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("SpeedFeet")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VisionFeet")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
