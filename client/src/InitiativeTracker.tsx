@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Combat, Placement, Token } from './types'
+import { getHealthCondition } from './tokenHealth'
 
 interface Props {
   combat: Combat | null
@@ -56,11 +57,12 @@ export function InitiativeTracker(props: Props) {
         ) : null}
       </div>
 
-      <ol className="tracker-list">
+      <ol className={`tracker-list${props.isGm ? ' gm' : ''}`}>
         {entries.map((entry) => {
           const t = tokens.get(entry.tokenId)
           if (!t) return null
           const current = active && combat?.currentTokenId === entry.tokenId
+          const healthCondition = getHealthCondition(t.hp, t.maxHp)
           return (
             <li key={entry.tokenId} className={current ? 'current' : undefined}>
               <span className="turn-marker">{current ? '▶' : ''}</span>
@@ -70,7 +72,7 @@ export function InitiativeTracker(props: Props) {
                 ) : (
                   <span className="swatch" style={{ background: t.color }} />
                 )}
-                {t.name}
+                <span className="tracker-token-name">{t.name}</span>
               </button>
               {props.isGm ? (
                 <input
@@ -91,9 +93,17 @@ export function InitiativeTracker(props: Props) {
               ) : (
                 <span className="hp">{entry.initiative}</span>
               )}
-              <span className="hp">
-                {t.hp}/{t.maxHp}
-              </span>
+              {props.isGm || t.isPlayer ? (
+              <span className="hp tracker-health">{t.hp}/{t.maxHp}</span>
+              ) : (
+                <span
+                className={`npc-health tracker-health ${healthCondition}`}
+                  aria-label={`${t.name} health: ${healthCondition}`}
+                  role="img"
+                >
+                  {healthCondition === 'green' ? '' : healthCondition}
+                </span>
+              )}
               {props.isGm && (
                 <button
                   className="danger icon-button"

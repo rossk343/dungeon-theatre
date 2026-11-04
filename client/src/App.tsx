@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
 import type Konva from 'konva'
-import { Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
+import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
 import {
   createChapter, createScene, createToken, deleteChapter, deleteScene, deleteToken, getAuthStatus, getSession, joinAsGuest,
@@ -12,6 +12,7 @@ import { ChapterTree } from './ChapterTree'
 import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
+import { getHealthColor, getHealthCondition } from './tokenHealth'
 import type { Chapter, Combat, GameState, GridPreview, MoveResult, Placement, Scene, Session, Token } from './types'
 import './App.css'
 
@@ -801,6 +802,27 @@ export default function App() {
               {placements.map((p) => {
                 const t = tokenById.get(p.tokenId)
                 if (!t) return null
+                const healthCondition = getHealthCondition(t.hp, t.maxHp)
+                const healthLabel = `${healthCondition[0].toUpperCase()}${healthCondition.slice(1)}`
+                if (!isGm && !t.isPlayer && healthCondition === 'green')
+                  return (
+                    <Group
+                      key={`l${p.tokenId}`}
+                      x={p.x - scene.gridSize / 2}
+                      y={p.y + scene.gridSize / 2 - 2}
+                      listening={false}
+                    >
+                      <Text text={t.name} width={scene.gridSize} align="center" fill="#e8e0d0" fontSize={12} />
+                      <Rect
+                        x={scene.gridSize / 2 - 4}
+                        y={14}
+                        width={8}
+                        height={8}
+                        fill={getHealthColor(healthCondition)}
+                        cornerRadius={1}
+                      />
+                    </Group>
+                  )
                 return (
                   <Text
                     key={`l${p.tokenId}`}
@@ -808,8 +830,8 @@ export default function App() {
                     y={p.y + scene.gridSize / 2 - 2}
                     width={scene.gridSize}
                     align="center"
-                    text={`${t.name} ${t.hp}/${t.maxHp}`}
-                    fill="#e8e0d0"
+                    text={`${t.name} ${isGm || t.isPlayer ? `${t.hp}/${t.maxHp}` : healthLabel}`}
+                    fill={!isGm && !t.isPlayer ? getHealthColor(healthCondition) : '#e8e0d0'}
                     fontSize={12}
                     shadowColor="black"
                     shadowBlur={4}
@@ -918,6 +940,7 @@ function TokenRow(props: {
 }) {
   const { token, isGm, onScene } = props
   const canEdit = isGm || token.isPlayer
+  const healthCondition = getHealthCondition(token.hp, token.maxHp)
   return (
     <div className="token-row">
       {token.imageUrl ? (
@@ -934,17 +957,29 @@ function TokenRow(props: {
         disabled={!canEdit}
         onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
       />
-      <input
-        key={`h${token.hp}`}
-        type="number"
-        min={0}
-        max={token.maxHp}
-        aria-label={`${token.name} HP`}
-        defaultValue={token.hp}
-        disabled={!canEdit}
-        onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
-      />
-      <span>/{token.maxHp}</span>
+      {isGm || token.isPlayer ? (
+        <>
+          <input
+            key={`h${token.hp}`}
+            type="number"
+            min={0}
+            max={token.maxHp}
+            aria-label={`${token.name} HP`}
+            defaultValue={token.hp}
+            disabled={!canEdit}
+            onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
+          />
+          <span>/{token.maxHp}</span>
+        </>
+      ) : (
+        <span
+          className={`npc-health ${healthCondition}`}
+          aria-label={`${token.name} health: ${healthCondition}`}
+          role="img"
+        >
+          {healthCondition === 'green' ? '' : healthCondition}
+        </span>
+      )}
       <input
         key={`s${token.speedFeet}`}
         type="number"

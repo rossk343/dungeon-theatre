@@ -54,7 +54,7 @@ Each token has a speed in feet (default 30, editable in the Tokens list). During
 
 The first account registered becomes the GM; that first registration does not need an invite code. The GM can share the displayed invite code with players, who can create password accounts or join as guests. Guests are players too. Accounts use a username and password for now; SSO is a future option.
 
-The GM manages scenes, chapters, token creation and placement, and combat setup. The GM can mark tokens as player-controlled or NPC/enemy-controlled. Players can edit the name, HP, speed and art of any player token, and can move any player token outside combat. In combat, only the current player token can be moved by a player, and players may advance a player token's turn. The server enforces these permissions; hiding controls in the client is only a usability measure. The auth cookie is HttpOnly and SameSite=Strict.
+The GM manages scenes, chapters, token creation and placement, and combat setup. The GM can mark tokens as player-controlled or NPC/enemy-controlled. Players can edit the name, HP, speed and art of any player token, and can move any player token outside combat. NPC HP is hidden from players; they see red or amber labels, or a green box for healthy NPCs (red at 25% or less, amber above 25% through 50%, green above 50%). In combat, only the current player token can be moved by a player, and players may advance a player token's turn. The server enforces these permissions; hiding controls in the client is only a usability measure. The auth cookie is HttpOnly and SameSite=Strict.
 
 ## Map images and grid
 - Create a scene from the **New scene** panel (name plus a PNG, JPEG, WebP or GIF), or use **Replace map image** on an existing scene.
