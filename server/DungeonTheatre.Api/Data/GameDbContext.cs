@@ -6,6 +6,26 @@ public class GameEntity
 {
     public required string Id { get; set; }
     public required string Name { get; set; }
+    // Shared secret that lets people register or join as guests.
+    public string InviteCode { get; set; } = "";
+}
+
+public static class Roles
+{
+    public const string Gm = "gm";
+    public const string Player = "player";
+}
+
+// Guests have no username or password; they hold a long-lived cookie instead.
+public class UserEntity
+{
+    public required string Id { get; set; }
+    public required string GameId { get; set; }
+    public string? Username { get; set; }
+    public required string DisplayName { get; set; }
+    public string? PasswordHash { get; set; }
+    public required string Role { get; set; }
+    public bool IsGuest { get; set; }
 }
 
 public class ChapterEntity
@@ -25,6 +45,8 @@ public class TokenEntity
     public int Hp { get; set; }
     public int MaxHp { get; set; }
     public int SpeedFeet { get; set; } = 30;
+    // Player tokens can be edited and moved by any player; the rest belong to the GM.
+    public bool IsPlayer { get; set; }
     public string? ImageUrl { get; set; }
 }
 
@@ -75,6 +97,7 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
     public DbSet<GameEntity> Games => Set<GameEntity>();
     public DbSet<ChapterEntity> Chapters => Set<ChapterEntity>();
     public DbSet<TokenEntity> Tokens => Set<TokenEntity>();
+    public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<SceneEntity> Scenes => Set<SceneEntity>();
     public DbSet<PlacementEntity> Placements => Set<PlacementEntity>();
     public DbSet<EncounterEntity> Encounters => Set<EncounterEntity>();
@@ -86,6 +109,14 @@ public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(
         {
             e.HasKey(g => g.Id);
             e.Property(g => g.Name).HasMaxLength(100);
+        });
+        b.Entity<UserEntity>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Username).HasMaxLength(32);
+            e.Property(u => u.DisplayName).HasMaxLength(40);
+            e.HasIndex(u => u.Username).IsUnique();
+            e.HasOne<GameEntity>().WithMany().HasForeignKey(u => u.GameId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ChapterEntity>(e =>
         {
@@ -132,15 +163,19 @@ public static class SeedData
     public static async Task SeedAsync(GameDbContext db)
     {
         const string game = GameStore.DefaultGameId;
-        db.Games.Add(new GameEntity { Id = game, Name = "My Campaign" });
-        db.Chapters.Add(new ChapterEntity { Id = "chapter-1", GameId = game, Name = "Chapter 1" });
+        if (await db.Games.FindAsync(game) is null)
+            db.Games.Add(new GameEntity { Id = game, Name = "My Campaign", InviteCode = AuthStore.NewInviteCode() });
+        if (await db.Chapters.FindAsync("chapter-1") is null)
+            db.Chapters.Add(new ChapterEntity { Id = "chapter-1", GameId = game, Name = "Chapter 1" });
         await db.SaveChangesAsync();
+        if (await db.Tokens.AnyAsync()) return;
+
         db.Scenes.AddRange(
             new SceneEntity { Id = "crypt", ChapterId = "chapter-1", SortOrder = 0, Name = "The Sunken Crypt", Width = 1200, Height = 720, GridSize = 60 },
             new SceneEntity { Id = "bridge", ChapterId = "chapter-1", SortOrder = 1, Name = "Bridge of Sighs", Width = 1200, Height = 720, GridSize = 80 });
         db.Tokens.AddRange(
-            new TokenEntity { Id = "t1", GameId = game, Name = "Knight", Color = "#b23a48", Hp = 34, MaxHp = 34 },
-            new TokenEntity { Id = "t2", GameId = game, Name = "Rogue", Color = "#3a7ca5", Hp = 22, MaxHp = 22 },
+            new TokenEntity { Id = "t1", GameId = game,             Name = "Knight", Color = "#b23a48", Hp = 34, MaxHp = 34, IsPlayer = true },
+                        new TokenEntity { Id = "t2", GameId = game, Name = "Rogue", Color = "#3a7ca5", Hp = 22, MaxHp = 22, IsPlayer = true },
             new TokenEntity { Id = "t3", GameId = game, Name = "Wraith", Color = "#6b5b95", Hp = 45, MaxHp = 45 });
         db.Placements.AddRange(
             new PlacementEntity { SceneId = "crypt", TokenId = "t1", X = 150, Y = 150 },

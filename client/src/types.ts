@@ -5,7 +5,20 @@ export interface Token {
   hp: number
   maxHp: number
   speedFeet: number
+  isPlayer: boolean
   imageUrl: string | null
+}
+
+export interface AuthUser {
+  id: string
+  displayName: string
+  role: 'gm' | 'player'
+  isGuest: boolean
+}
+
+export interface Session {
+  user: AuthUser
+  inviteCode: string | null
 }
 
 export interface InitiativeEntry {

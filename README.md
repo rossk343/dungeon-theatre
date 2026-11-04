@@ -15,7 +15,7 @@ client/   React front end
 
 ## Roadmap
 1. Vertical slice: hardcoded map, draggable tokens, SignalR sync between two tabs
-2. Auth, games and invite codes
+2. Accounts and roles (local username/password, invite codes)
 3. Map uploads and grid calibration
 4. Permissions (GM vs player, hidden tokens)
 5. Fog of war, chat and dice, measuring, initiative
@@ -38,7 +38,7 @@ Vertical slice: scenes with uploaded map images, a calibratable grid, a game-wid
 
 ## Scenes and tokens
 
-A game contains chapters, and chapters contain scenes. Use the **Chapters** panel to add, rename and delete chapters (a chapter must be empty to delete) and to pick a scene; change a scene's chapter from its **Scene** panel. Tokens belong to the game, not to a scene, so their name, HP and art are the same on every map; scenes only store where each token sits. There is a single game for now; accounts and multiple games come later.
+A game contains chapters, and chapters contain scenes. Use the **Chapters** panel to add, rename and delete chapters (a chapter must be empty to delete) and to pick a scene; change a scene's chapter from its **Scene** panel. Tokens belong to the game, not to a scene, so their name, HP and art are the same on every map; scenes only store where each token sits. There is a single game for now.
 
 Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, optional art), replace their art, or delete them. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
 
@@ -46,7 +46,13 @@ Tokens are a game-wide library; scenes only store placements. From the sidebar y
 
 The panel on the left is the initiative tracker for the current scene. Add placed tokens with an initiative (leave it blank to roll a d20), edit values inline, then **Start combat**. Order is highest initiative first; **Next turn** advances and increments the round when it wraps. Click a name to zoom the map to that token.
 
-Each token has a speed in feet (default 30, editable in the Tokens list). During combat only the token whose turn it is is metered: every square, diagonals included, costs the scene's feet per square (5 by default), and a drag that would exceed the remaining movement is rejected and the token snaps back. **Reset move** gives the current token its movement back. Other tokens move freely, and there are no GM/player roles yet, so anyone can use these controls (roles arrive with accounts).
+Each token has a speed in feet (default 30, editable in the Tokens list). During combat only the token whose turn it is is metered: every square, diagonals included, costs the scene's feet per square (5 by default), and a drag that would exceed the remaining movement is rejected and the token snaps back. **Reset move** gives the current token its movement back. The GM can move any token; players can move any player token, but during combat only when that token has the current turn.
+
+## Accounts and roles
+
+The first account registered becomes the GM; that first registration does not need an invite code. The GM can share the displayed invite code with players, who can create password accounts or join as guests. Guests are players too. Accounts use a username and password for now; SSO is a future option.
+
+The GM manages scenes, chapters, token creation and placement, and combat setup. The GM can mark tokens as player-controlled or NPC/enemy-controlled. Players can edit the name, HP, speed and art of any player token, and can move any player token outside combat. In combat, only the current player token can be moved by a player, and players may advance a player token's turn. The server enforces these permissions; hiding controls in the client is only a usability measure. The auth cookie is HttpOnly and SameSite=Strict.
 
 ## Map images and grid
 - Create a scene from the **New scene** panel (name plus a PNG, JPEG, WebP or GIF), or use **Replace map image** on an existing scene.

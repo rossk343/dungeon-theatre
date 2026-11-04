@@ -8,7 +8,7 @@ public static class ChapterEndpoints
 {
     public static void MapChapterEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/chapters").DisableAntiforgery();
+        var group = app.MapGroup("/api/chapters").DisableAntiforgery().RequireAuthorization("gm");
 
         group.MapPost("/", async (ChapterNameRequest body, GameStore store, IHubContext<GameHub> hub) =>
         {

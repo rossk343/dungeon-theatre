@@ -67,6 +67,10 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("InviteCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -180,6 +184,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsPlayer")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MaxHp")
                         .HasColumnType("INTEGER");
 
@@ -196,6 +203,44 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.HasIndex("GameId");
 
                     b.ToTable("Tokens");
+                });
+
+            modelBuilder.Entity("DungeonTheatre.Api.Data.UserEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GameId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsGuest")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GameId");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("DungeonTheatre.Api.Data.ChapterEntity", b =>
@@ -256,6 +301,15 @@ namespace DungeonTheatre.Api.Data.Migrations
                 });
 
             modelBuilder.Entity("DungeonTheatre.Api.Data.TokenEntity", b =>
+                {
+                    b.HasOne("DungeonTheatre.Api.Data.GameEntity", null)
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DungeonTheatre.Api.Data.UserEntity", b =>
                 {
                     b.HasOne("DungeonTheatre.Api.Data.GameEntity", null)
                         .WithMany()

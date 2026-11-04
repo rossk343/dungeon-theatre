@@ -9,8 +9,8 @@ public static class SceneEndpoints
 {
     public static void MapSceneEndpoints(this WebApplication app)
     {
-        // Antiforgery is disabled because there is no cookie auth yet; revisit when accounts are added.
-        var group = app.MapGroup("/api/scenes").DisableAntiforgery();
+        // Antiforgery tokens are off; CSRF is handled by the SameSite=Strict auth cookie. GM-only.
+        var group = app.MapGroup("/api/scenes").DisableAntiforgery().RequireAuthorization("gm");
 
         group.MapPost("/", async ([FromForm] string? name, [FromForm] string? chapterId, IFormFile? file, GameStore store,
             MapImageStorage images, IHubContext<GameHub> hub) =>

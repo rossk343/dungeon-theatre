@@ -131,6 +131,25 @@ public class CombatStore(GameDbContext db)
         return await GetCombatAsync(sceneId);
     }
 
+    // Players move player tokens; in combat only the token whose turn it is.
+    public async Task<bool> PlayerCanMoveAsync(string sceneId, string tokenId)
+    {
+        if (!await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == tokenId && t.IsPlayer)) return false;
+        var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
+        return encounter is not { Active: true } || encounter.CurrentTokenId == tokenId;
+    }
+
+    public async Task<bool> CurrentTurnIsPlayerAsync(string sceneId)
+    {
+        var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
+        if (encounter is not { Active: true } || encounter.CurrentTokenId is null) return false;
+        return await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == encounter.CurrentTokenId && t.IsPlayer);
+    }
+
+    public async Task<Placement?> GetPlacementAsync(string sceneId, string tokenId) =>
+        await db.Placements.AsNoTracking().Where(p => p.SceneId == sceneId && p.TokenId == tokenId)
+            .Select(p => ToDto(p)).FirstOrDefaultAsync();
+
     // Only the token whose turn it is has its movement counted; everything else moves freely.
     // Distance is in grid squares with diagonals costing the same as straight steps.
     public async Task<MoveResult?> CommitMoveAsync(string sceneId, string tokenId, double x, double y)

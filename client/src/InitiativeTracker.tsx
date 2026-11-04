@@ -3,6 +3,8 @@ import type { Combat, Placement, Token } from './types'
 
 interface Props {
   combat: Combat | null
+  isGm: boolean
+  canNext: boolean
   tokens: Map<string, Token>
   placements: Placement[]
   onFocus: (tokenId: string) => void
@@ -35,19 +37,23 @@ export function InitiativeTracker(props: Props) {
       <div className="tracker-actions">
         {active ? (
           <>
-            <button onClick={props.onNext}>Next turn</button>
-            <button onClick={props.onResetMovement} title="Give the current token its full movement back">
-              Reset move
-            </button>
-            <button className="danger" onClick={props.onEnd}>
-              End
-            </button>
+            {props.canNext && <button onClick={props.onNext}>Next turn</button>}
+            {props.isGm && (
+              <>
+                <button onClick={props.onResetMovement} title="Give the current token its full movement back">
+                  Reset move
+                </button>
+                <button className="danger" onClick={props.onEnd}>
+                  End
+                </button>
+              </>
+            )}
           </>
-        ) : (
+        ) : props.isGm ? (
           <button disabled={entries.length === 0} onClick={props.onStart}>
             Start combat
           </button>
-        )}
+        ) : null}
       </div>
 
       <ol className="tracker-list">
@@ -66,31 +72,37 @@ export function InitiativeTracker(props: Props) {
                 )}
                 {t.name}
               </button>
-              <input
-                key={`i${entry.initiative}`}
-                className="init-input"
-                type="number"
-                aria-label={`${t.name} initiative`}
-                min={-100}
-                max={1000}
-                defaultValue={entry.initiative}
-                onBlur={(e) => {
-                  const n = Math.round(Number(e.target.value))
-                  if (e.target.value !== '' && Number.isFinite(n) && n !== entry.initiative && n >= -100 && n <= 1000)
-                    props.onSetInitiative(entry.tokenId, n)
-                  else e.target.value = String(entry.initiative)
-                }}
-              />
+              {props.isGm ? (
+                <input
+                  key={`i${entry.initiative}`}
+                  className="init-input"
+                  type="number"
+                  aria-label={`${t.name} initiative`}
+                  min={-100}
+                  max={1000}
+                  defaultValue={entry.initiative}
+                  onBlur={(e) => {
+                    const n = Math.round(Number(e.target.value))
+                    if (e.target.value !== '' && Number.isFinite(n) && n !== entry.initiative && n >= -100 && n <= 1000)
+                      props.onSetInitiative(entry.tokenId, n)
+                    else e.target.value = String(entry.initiative)
+                  }}
+                />
+              ) : (
+                <span className="hp">{entry.initiative}</span>
+              )}
               <span className="hp">
                 {t.hp}/{t.maxHp}
               </span>
-              <button
-                className="danger icon-button"
-                aria-label={`Remove ${t.name} from initiative`}
-                onClick={() => props.onRemove(entry.tokenId)}
-              >
-                ✕
-              </button>
+              {props.isGm && (
+                <button
+                  className="danger icon-button"
+                  aria-label={`Remove ${t.name} from initiative`}
+                  onClick={() => props.onRemove(entry.tokenId)}
+                >
+                  ✕
+                </button>
+              )}
               {current && (
                 <span className="moved">
                   Moved {combat?.movedFeet}/{t.speedFeet} ft
@@ -102,7 +114,7 @@ export function InitiativeTracker(props: Props) {
         {entries.length === 0 && <li className="empty">No one in the order yet.</li>}
       </ol>
 
-      {addable.length > 0 && (
+      {props.isGm && addable.length > 0 && (
         <div className="tracker-add">
           <select aria-label="Token to add" value={chosen} onChange={(e) => setPick(e.target.value)}>
             {addable.map((p) => (

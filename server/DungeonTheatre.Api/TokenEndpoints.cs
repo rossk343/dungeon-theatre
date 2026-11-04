@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 
@@ -7,12 +8,14 @@ public static class TokenEndpoints
 {
     public static void MapTokenEndpoints(this WebApplication app)
     {
-        // Antiforgery is disabled because there is no cookie auth yet; revisit when accounts are added.
-        var group = app.MapGroup("/api/tokens").DisableAntiforgery();
+        // Antiforgery tokens are off; CSRF is handled by the SameSite=Strict auth cookie.
+        // Everyone signed in may reach this group; each route decides what players may do.
+        var group = app.MapGroup("/api/tokens").DisableAntiforgery().RequireAuthorization();
 
         // Art is optional on create; a token without it renders as a coloured disc.
         group.MapPost("/", async ([FromForm] string? name, [FromForm] string? color, [FromForm] int? maxHp,
-                    [FromForm] int? speedFeet, IFormFile? file, GameStore store, MapImageStorage images, IHubContext<GameHub> hub) =>
+                    [FromForm] int? speedFeet, [FromForm] bool? isPlayer, IFormFile? file, GameStore store, MapImageStorage images,
+                    IHubContext<GameHub> hub) =>
         {
             if (!GameStore.IsValidName(name, 40))
                 return Results.BadRequest(new { error = "Token name must be 1-40 characters." });
@@ -35,7 +38,7 @@ public static class TokenEndpoints
 
             try
             {
-                var token = await store.CreateTokenAsync(name!, color!, maxHp.Value, speed, image?.Url);
+                var token = await store.CreateTokenAsync(name!, color!, maxHp.Value, speed, isPlayer ?? false, image?.Url);
                 if (token is null)
                 {
                     images.Delete(image?.Url);
@@ -49,11 +52,13 @@ public static class TokenEndpoints
                 images.Delete(image?.Url);
                 throw;
             }
-        });
+        }).RequireAuthorization("gm");
 
-        group.MapPut("/{id}/image", async (string id, IFormFile? file, GameStore store,
+        // Players may change art on player tokens only; the check runs before the upload is stored.
+        group.MapPut("/{id}/image", async (string id, IFormFile? file, ClaimsPrincipal user, GameStore store,
             MapImageStorage images, IHubContext<GameHub> hub) =>
         {
+            if (!user.IsGm() && !await store.IsPlayerTokenAsync(id)) return Results.Forbid();
             var (image, error) = await images.SaveAsync(file);
             if (image is null) return Results.BadRequest(new { error });
 
@@ -80,6 +85,6 @@ public static class TokenEndpoints
             images.Delete(imageUrl);
             await hub.Clients.All.SendAsync("TokenDeleted", id);
             return Results.NoContent();
-        });
+        }).RequireAuthorization("gm");
     }
 }

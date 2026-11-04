@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
-public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, string? ImageUrl);
+public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, bool IsPlayer, string? ImageUrl);
 
 public record Chapter(string Id, string Name, int SortOrder);
 
@@ -33,7 +33,7 @@ public class GameStore(GameDbContext db)
 
     public static bool IsValidSpeed(int speed) => speed is >= 0 and <= MaxSpeedFeet;
 
-    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ImageUrl);
+    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.IsPlayer, t.ImageUrl);
 
     private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
 
@@ -216,7 +216,7 @@ public class GameStore(GameDbContext db)
         return (true, entity.ImageUrl);
     }
 
-    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, string? imageUrl)
+    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, bool isPlayer, string? imageUrl)
     {
         name = name.Trim();
         if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 || !IsValidSpeed(speedFeet))
@@ -230,9 +230,22 @@ public class GameStore(GameDbContext db)
             Hp = maxHp,
             MaxHp = maxHp,
             SpeedFeet = speedFeet,
+            IsPlayer = isPlayer,
             ImageUrl = imageUrl,
         };
         db.Tokens.Add(entity);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public Task<bool> IsPlayerTokenAsync(string tokenId) =>
+        db.Tokens.AsNoTracking().AnyAsync(t => t.Id == tokenId && t.IsPlayer);
+
+    public async Task<Token?> SetTokenKindAsync(string tokenId, bool isPlayer)
+    {
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return null;
+        entity.IsPlayer = isPlayer;
         await db.SaveChangesAsync();
         return ToDto(entity);
     }

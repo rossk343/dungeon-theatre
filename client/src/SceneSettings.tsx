@@ -142,12 +142,20 @@ export function NewTokenForm({
   onCreate,
 }: {
   busy: boolean
-  onCreate: (name: string, color: string, maxHp: number, speedFeet: number, file: File | null) => Promise<boolean>
+  onCreate: (
+    name: string,
+    color: string,
+    maxHp: number,
+    speedFeet: number,
+    isPlayer: boolean,
+    file: File | null,
+  ) => Promise<boolean>
 }) {
   const [name, setName] = useState('')
   const [color, setColor] = useState('#8a6d3b')
   const [maxHp, setMaxHp] = useState('10')
   const [speed, setSpeed] = useState('30')
+  const [isPlayer, setIsPlayer] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [inputKey, setInputKey] = useState(0)
   const hp = Math.round(Number(maxHp))
@@ -181,6 +189,13 @@ export function NewTokenForm({
           style={{ width: 60 }}
         />
       </div>
+      <label>
+        Token type
+        <select value={String(isPlayer)} onChange={(e) => setIsPlayer(e.target.value === 'true')}>
+          <option value="false">NPC / enemy (GM-controlled)</option>
+          <option value="true">Player token</option>
+        </select>
+      </label>
       <input
         key={inputKey}
         type="file"
@@ -191,9 +206,10 @@ export function NewTokenForm({
       <button
         disabled={busy || !valid}
         onClick={async () => {
-          if (await onCreate(name.trim(), color, hp, spd, file)) {
+          if (await onCreate(name.trim(), color, hp, spd, isPlayer, file)) {
             setName('')
             setFile(null)
+            setIsPlayer(false)
             setInputKey((k) => k + 1)
           }
         }}

@@ -9,6 +9,7 @@ interface TokenDiscProps {
   y: number
   radius: number
   active?: boolean
+  draggable: boolean
   onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => void
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void
 }
@@ -32,9 +33,9 @@ function Art({ url, radius }: { url: string; radius: number }) {
   )
 }
 
-export function TokenDisc({ token, x, y, radius, active, onDragMove, onDragEnd }: TokenDiscProps) {
+export function TokenDisc({ token, x, y, radius, active, draggable, onDragMove, onDragEnd }: TokenDiscProps) {
   return (
-    <Group x={x} y={y} draggable onDragMove={onDragMove} onDragEnd={onDragEnd}>
+    <Group x={x} y={y} draggable={draggable} onDragMove={onDragMove} onDragEnd={onDragEnd}>
       <Circle radius={radius} fill={token.color} />
       {token.imageUrl && <Art url={token.imageUrl} radius={radius} />}
       <Circle radius={radius} stroke="#e8e0d0" strokeWidth={2} />

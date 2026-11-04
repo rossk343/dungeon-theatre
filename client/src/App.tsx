@@ -4,14 +4,15 @@ import type Konva from 'konva'
 import { Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
 import {
-  createChapter, createScene, createToken, deleteChapter, deleteScene, deleteToken, moveScene, renameChapter,
-  replaceSceneImage, setTokenImage,
+  createChapter, createScene, createToken, deleteChapter, deleteScene, deleteToken, getAuthStatus, getSession, joinAsGuest,
+  login, logout, moveScene, regenerateInvite, register, renameChapter, replaceSceneImage, setTokenImage,
 } from './api'
+import { AuthScreen } from './AuthScreen'
 import { ChapterTree } from './ChapterTree'
 import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
-import type { Chapter, Combat, GameState, GridPreview, MoveResult, Placement, Scene, Token } from './types'
+import type { Chapter, Combat, GameState, GridPreview, MoveResult, Placement, Scene, Session, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -66,6 +67,10 @@ function GridLines({ scene }: { scene: Scene }) {
 }
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [hasUsers, setHasUsers] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
   const [scenes, setScenes] = useState<Scene[]>([])
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [gameName, setGameName] = useState('')
@@ -80,6 +85,26 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarOpen') !== 'false')
+  const isGm = session?.user.role === 'gm'
+
+  useEffect(() => {
+    let active = true
+    Promise.all([getAuthStatus(), getSession()])
+      .then(([authStatus, currentSession]) => {
+        if (!active) return
+        setHasUsers(authStatus.hasUsers)
+        setSession(currentSession)
+      })
+      .catch((e: unknown) => {
+        if (active) setAuthError(e instanceof Error ? e.message : 'Could not load sign-in status.')
+      })
+      .finally(() => {
+        if (active) setAuthLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const toggleSidebar = () =>
     setSidebarOpen((open) => {
@@ -167,7 +192,10 @@ export default function App() {
     )
   }, [])
 
+  const userId = session?.user.id
+
   useEffect(() => {
+    if (!userId) return
     const conn = new HubConnectionBuilder().withUrl('/hubs/game').withAutomaticReconnect().build()
     connection.current = conn
 
@@ -228,17 +256,32 @@ export default function App() {
     }
 
     conn.onreconnecting(() => setStatus('reconnecting'))
-    conn.onreconnected(() => void load())
+    conn.onreconnected(() => void load().catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not reconnect.')))
     conn.onclose(() => setStatus('disconnected'))
-    conn.start().then(load).catch(() => setStatus('disconnected'))
+    conn.start().then(load).catch(async (e: unknown) => {
+      setStatus('disconnected')
+      try {
+        const current = await getSession()
+        if (!current) setSession(null)
+        else setError(e instanceof Error ? e.message : 'Could not connect to the game.')
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : 'Could not connect to the game.')
+      }
+    })
 
     return () => {
       void conn.stop()
     }
-  }, [joinScene, applyScene, applyChapter, applyToken])
+  }, [userId, joinScene, applyScene, applyChapter, applyToken])
 
-  const invoke = (method: string, ...args: unknown[]) =>
-    connection.current?.invoke(method, ...args).catch(() => {})
+  const invoke = async <T,>(method: string, ...args: unknown[]): Promise<T | undefined> => {
+    try {
+      return await connection.current?.invoke<T>(method, ...args)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Could not complete ${method}.`)
+      return undefined
+    }
+  }
 
   const run = async <T,>(action: () => Promise<T>): Promise<T | null> => {
     setUploading(true)
@@ -250,6 +293,61 @@ export default function App() {
       return null
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleLogin = async (username: string, password: string) => {
+    const next = await login(username, password)
+    setStatus('connecting')
+    setSession(next)
+    setAuthError(null)
+    setError(null)
+    return next
+  }
+
+  const handleRegister = async (username: string, password: string, displayName: string, inviteCode: string) => {
+    const next = await register(username, password, displayName, inviteCode)
+    setStatus('connecting')
+    setSession(next)
+    setHasUsers(true)
+    setAuthError(null)
+    setError(null)
+    return next
+  }
+
+  const handleGuest = async (displayName: string, inviteCode: string) => {
+    const next = await joinAsGuest(displayName, inviteCode)
+    setStatus('connecting')
+    setSession(next)
+    setHasUsers(true)
+    setAuthError(null)
+    setError(null)
+    return next
+  }
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      setStatus('disconnected')
+      setSession(null)
+      setScenes([])
+      setChapters([])
+      setTokens([])
+      setPlacements([])
+      setCombat(null)
+      setGameName('')
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not sign out.')
+    }
+  }
+
+  const handleRegenerateInvite = async () => {
+    try {
+      const inviteCode = await regenerateInvite()
+      setSession((current) => (current ? { ...current, inviteCode } : current))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate an invite code.')
     }
   }
 
@@ -297,8 +395,15 @@ export default function App() {
     void invoke('RenameScene', savedScene.id, name)
   }
 
-  const handleCreateToken = async (name: string, color: string, maxHp: number, speedFeet: number, file: File | null) => {
-    const t = await run(() => createToken(name, color, maxHp, speedFeet, file))
+  const handleCreateToken = async (
+    name: string,
+    color: string,
+    maxHp: number,
+    speedFeet: number,
+    isPlayer: boolean,
+    file: File | null,
+  ) => {
+    const t = await run(() => createToken(name, color, maxHp, speedFeet, isPlayer, file))
     if (t) applyToken(t)
     return t !== null
   }
@@ -329,13 +434,26 @@ export default function App() {
   const commitMove = async (tokenId: string, x: number, y: number, node: Konva.Node) => {
     setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? { ...p, x, y } : p)))
     const id = sceneRef.current
+    const original = placements.find((p) => p.tokenId === tokenId)
+    const restore = () => {
+      if (!original) return
+      node.position({ x: original.x, y: original.y })
+      setPlacements((prev) => prev.map((p) => (p.tokenId === tokenId ? original : p)))
+    }
     let result: MoveResult | null | undefined
     try {
       result = await connection.current?.invoke<MoveResult | null>('MovePlacement', id, tokenId, x, y)
-    } catch {
+    } catch (e) {
+      restore()
+      setError(e instanceof Error ? e.message : 'Could not move token.')
       return
     }
-    if (!result || sceneRef.current !== id) return
+    if (sceneRef.current !== id) return
+    if (!result) {
+      restore()
+      showNotice('Move could not be confirmed.')
+      return
+    }
     if (result.combat) setCombat(result.combat)
     if (!result.accepted) {
       const { x: rx, y: ry } = result.placement
@@ -373,8 +491,38 @@ export default function App() {
     void invoke('UpdateToken', t.id, name, hp, speedFeet)
   }
 
+  const changeTokenKind = async (tokenId: string, isPlayer: boolean) => {
+    const token = await invoke<Token | null>('SetTokenKind', tokenId, isPlayer)
+    if (token) applyToken(token)
+  }
+
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
   const placed = new Set(placements.map((p) => p.tokenId))
+
+  if (authLoading) {
+    return <main className="auth-shell"><p>Entering the campaign hall…</p></main>
+  }
+  if (authError) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-panel">
+          <h1>Dungeon Theatre</h1>
+          <p className="error" role="alert">{authError}</p>
+          <button onClick={() => window.location.reload()}>Try again</button>
+        </section>
+      </main>
+    )
+  }
+  if (!session) {
+    return (
+      <AuthScreen
+        hasUsers={hasUsers}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onGuest={handleGuest}
+      />
+    )
+  }
 
   return (
     <div className="app">
@@ -382,10 +530,25 @@ export default function App() {
         <h1>Dungeon Theatre</h1>
         <span className={`status ${status}`}>{status}</span>
         {gameName && <span className="game-name">{gameName}</span>}
+        <span className="signed-in">
+          {session.user.displayName} · {isGm ? 'GM' : 'Player'}{session.user.isGuest ? ' · Guest' : ''}
+        </span>
+        {isGm && session.inviteCode && (
+          <span className="invite-code">
+            Invite: <code>{session.inviteCode}</code>
+            <button onClick={() => void handleRegenerateInvite()}>New code</button>
+          </span>
+        )}
+        <button onClick={() => void handleLogout()}>Sign out</button>
       </header>
       <main>
         <InitiativeTracker
           combat={combat}
+          isGm={isGm}
+          canNext={
+            isGm ||
+            (combat?.active === true && tokenById.get(combat.currentTokenId ?? '')?.isPlayer === true)
+          }
           tokens={tokenById}
           placements={placements}
           onFocus={focusToken}
@@ -450,6 +613,11 @@ export default function App() {
                     y={p.y}
                     radius={radius}
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
+                    draggable={
+                      isGm ||
+                      (t.isPlayer &&
+                        (!combat?.active || combat.currentTokenId === p.tokenId))
+                    }
                     onDragMove={(e) => {
                       const now = performance.now()
                       if (now - lastSent.current < SEND_INTERVAL_MS) return
@@ -506,16 +674,18 @@ export default function App() {
               {error}
             </p>
           )}
-          <ChapterTree
-            chapters={chapters}
-            scenes={scenes}
-            sceneId={sceneId}
-            onSelect={(id) => void joinScene(id)}
-            onAdd={handleAddChapter}
-            onRename={(id, name) => void handleRenameChapter(id, name)}
-            onDelete={handleDeleteChapter}
-          />
-          {savedScene && (
+          {isGm && (
+            <ChapterTree
+              chapters={chapters}
+              scenes={scenes}
+              sceneId={sceneId}
+              onSelect={(id) => void joinScene(id)}
+              onAdd={handleAddChapter}
+              onRename={(id, name) => void handleRenameChapter(id, name)}
+              onDelete={handleDeleteChapter}
+            />
+          )}
+          {isGm && savedScene && (
             <SceneSettings
               key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
               scene={savedScene}
@@ -529,25 +699,27 @@ export default function App() {
               onDelete={handleDeleteScene}
             />
           )}
-          <NewSceneForm
+          {isGm && <NewSceneForm
             busy={uploading}
             chapters={chapters}
             defaultChapterId={savedScene?.chapterId ?? null}
             onCreate={handleCreate}
-          />
-          <NewTokenForm busy={uploading} onCreate={handleCreateToken} />
+          />}
+          {isGm && <NewTokenForm busy={uploading} onCreate={handleCreateToken} />}
           <section className="panel">
             <h2>Tokens</h2>
             {tokens.map((t) => (
               <TokenRow
                 key={t.id}
                 token={t}
+                isGm={isGm}
                 onScene={placed.has(t.id)}
                 onSave={saveToken}
                 onAdd={() => addToScene(t.id)}
                 onRemove={() => removeFromScene(t.id)}
                 onArt={(f) => void handleTokenArt(t, f)}
                 onDelete={() => handleDeleteToken(t)}
+                onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
               />
             ))}
           </section>
@@ -559,14 +731,17 @@ export default function App() {
 
 function TokenRow(props: {
   token: Token
+  isGm: boolean
   onScene: boolean
   onSave: (t: Token, name: string, hp: number, speedFeet: number) => void
   onAdd: () => void
   onRemove: () => void
   onArt: (file: File) => void
   onDelete: () => void
+  onKindChange: (isPlayer: boolean) => void
 }) {
-  const { token, onScene } = props
+  const { token, isGm, onScene } = props
+  const canEdit = isGm || token.isPlayer
   return (
     <div className="token-row">
       {token.imageUrl ? (
@@ -579,6 +754,8 @@ function TokenRow(props: {
         key={`n${token.name}`}
         defaultValue={token.name}
         maxLength={40}
+        aria-label={`${token.name} name`}
+        disabled={!canEdit}
         onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
       />
       <input
@@ -586,7 +763,9 @@ function TokenRow(props: {
         type="number"
         min={0}
         max={token.maxHp}
+        aria-label={`${token.name} HP`}
         defaultValue={token.hp}
+        disabled={!canEdit}
         onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
       />
       <span>/{token.maxHp}</span>
@@ -598,6 +777,7 @@ function TokenRow(props: {
         title="Speed (ft)"
         aria-label={`${token.name} speed in feet`}
         defaultValue={token.speedFeet}
+        disabled={!canEdit}
         onBlur={(e) => {
           const n = Math.round(Number(e.target.value))
           if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n)
@@ -605,22 +785,36 @@ function TokenRow(props: {
         }}
       />
       <span>ft</span>
-      <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>
-      <label className="icon-button" title="Set token art">
-        Art
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) props.onArt(file)
-          }}
-        />
-      </label>
-      <button className="danger icon-button" title="Delete token" aria-label={`Delete ${token.name}`} onClick={props.onDelete}>
-        ✕
-      </button>
+      {isGm && (
+        <select
+          aria-label={`${token.name} token type`}
+          value={String(token.isPlayer)}
+          onChange={(e) => props.onKindChange(e.target.value === 'true')}
+        >
+          <option value="false">NPC</option>
+          <option value="true">Player</option>
+        </select>
+      )}
+      {isGm && <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>}
+      {canEdit && (
+        <label className="icon-button" title="Set token art">
+          Art
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) props.onArt(file)
+            }}
+          />
+        </label>
+      )}
+      {isGm && (
+        <button className="danger icon-button" title="Delete token" aria-label={`Delete ${token.name}`} onClick={props.onDelete}>
+          ✕
+        </button>
+      )}
     </div>
   )
 }
