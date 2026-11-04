@@ -33,6 +33,8 @@ public static class SceneEndpoints
                     return Results.BadRequest(new { error = "Choose a chapter for the scene." });
                 }
                 await hub.Clients.All.SendAsync("SceneAdded", scene);
+                if (await store.GetActiveSceneIdAsync() == scene.Id)
+                    await hub.Clients.All.SendAsync("ActiveSceneChanged", scene.Id);
                 return Results.Ok(scene);
             }
             catch
@@ -74,10 +76,13 @@ public static class SceneEndpoints
         group.MapDelete("/{id}", async (string id, GameStore store, MapImageStorage images,
             IHubContext<GameHub> hub) =>
         {
-            var (found, imageUrl) = await store.DeleteSceneAsync(id);
+            var previousActiveSceneId = await store.GetActiveSceneIdAsync();
+            var (found, imageUrl, activeSceneId) = await store.DeleteSceneAsync(id);
             if (!found) return Results.NotFound();
             images.Delete(imageUrl);
-            await hub.Clients.All.SendAsync("SceneDeleted", id);
+            await hub.Clients.All.SendAsync("SceneDeleted", id, activeSceneId);
+            if (previousActiveSceneId != activeSceneId)
+                await hub.Clients.All.SendAsync("ActiveSceneChanged", activeSceneId);
             return Results.NoContent();
         });
     }

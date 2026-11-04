@@ -5,6 +5,8 @@ interface ChapterTreeProps {
   chapters: Chapter[]
   scenes: Scene[]
   sceneId: string | null
+  activeSceneId: string | null
+  onSetActiveScene: (sceneId: string) => void
   onSelect: (sceneId: string) => void
   onAdd: (name: string) => Promise<boolean>
   onRename: (chapterId: string, name: string) => void
@@ -70,7 +72,9 @@ function ChapterHeading({ chapter, empty, onRename, onDelete }: {
   )
 }
 
-export function ChapterTree({ chapters, scenes, sceneId, onSelect, onAdd, onRename, onDelete }: ChapterTreeProps) {
+export function ChapterTree({
+  chapters, scenes, sceneId, activeSceneId, onSetActiveScene, onSelect, onAdd, onRename, onDelete,
+}: ChapterTreeProps) {
   const [newName, setNewName] = useState('')
 
   const add = async () => {
@@ -94,9 +98,21 @@ export function ChapterTree({ chapters, scenes, sceneId, onSelect, onAdd, onRena
             <ul className="scene-list">
               {inChapter.map((s) => (
                 <li key={s.id}>
-                  <button className={s.id === sceneId ? 'active' : ''} onClick={() => onSelect(s.id)}>
-                    {s.name}
-                  </button>
+                  <div className={`scene-option ${s.id === sceneId ? 'selected' : ''}`}>
+                    <button className="scene-select" onClick={() => onSelect(s.id)}>
+                      {s.name}
+                    </button>
+                    <label className="active-scene-choice" title="Active">
+                      <input
+                        type="checkbox"
+                        aria-label={`Set ${s.name} as active scene`}
+                        checked={s.id === activeSceneId}
+                        onChange={(e) => {
+                          if (e.target.checked) onSetActiveScene(s.id)
+                        }}
+                      />
+                    </label>
+                  </div>
                 </li>
               ))}
               {inChapter.length === 0 && <li className="hint">No scenes yet</li>}

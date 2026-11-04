@@ -112,9 +112,46 @@ aside.collapsed {
   gap: 4px;
 }
 
-.scene-list button {
-  width: 100%;
+.scene-list li {
+  min-width: 0;
+}
+
+.scene-option {
+  display: flex;
+  align-items: center;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  background: #2a2535;
+}
+
+.scene-option:hover {
+  background: #332d3f;
+}
+
+.scene-option.selected {
+  background: #5a3a6b;
+}
+
+.scene-option .scene-select {
+  flex: 1;
+  min-width: 0;
+  width: auto;
   text-align: left;
+  border: 0;
+  background: transparent;
+}
+
+.active-scene-choice {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.active-scene-choice input {
+  margin: 0;
+  accent-color: #e0b341;
 }
 
 select {

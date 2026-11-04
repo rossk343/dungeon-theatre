@@ -8,6 +8,7 @@ public class GameEntity
     public required string Name { get; set; }
     // Shared secret that lets people register or join as guests.
     public string InviteCode { get; set; } = "";
+    public string? ActiveSceneId { get; set; }
 }
 
 public static class Roles
@@ -164,7 +165,10 @@ public static class SeedData
     {
         const string game = GameStore.DefaultGameId;
         if (await db.Games.FindAsync(game) is null)
-            db.Games.Add(new GameEntity { Id = game, Name = "My Campaign", InviteCode = AuthStore.NewInviteCode() });
+            db.Games.Add(new GameEntity
+            {
+                Id = game, Name = "My Campaign", InviteCode = AuthStore.NewInviteCode(), ActiveSceneId = "crypt",
+            });
         if (await db.Chapters.FindAsync("chapter-1") is null)
             db.Chapters.Add(new ChapterEntity { Id = "chapter-1", GameId = game, Name = "Chapter 1" });
         await db.SaveChangesAsync();

@@ -64,10 +64,21 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
 
     public Task<GameState> GetState() => store.GetStateAsync();
 
+    public async Task<string?> SetActiveScene(string sceneId)
+    {
+        RequireGm();
+        var activeSceneId = await store.SetActiveSceneAsync(sceneId);
+        if (activeSceneId is not null)
+            await Clients.All.SendAsync("ActiveSceneChanged", activeSceneId);
+        return activeSceneId;
+    }
+
     // A connection watches one scene at a time.
     public async Task<List<Placement>> JoinScene(string sceneId)
     {
         if (!await store.SceneExistsAsync(sceneId)) throw new HubException("Unknown scene.");
+        if (!IsGm && sceneId != await store.GetActiveSceneIdAsync())
+            throw new HubException("Players may only join the active scene.");
 
         if (Context.Items.TryGetValue(SceneKey, out var prev) && prev is string prevId)
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, Group(prevId));

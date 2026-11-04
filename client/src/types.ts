@@ -74,6 +74,7 @@ export interface GameState {
   chapters: Chapter[]
   scenes: Scene[]
   tokens: Token[]
+  activeSceneId: string | null
 }
 
 // Unsaved calibration shown live on the canvas before it is committed.

@@ -19,7 +19,13 @@ const SEND_INTERVAL_MS = 50
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 4
 
-type View = { x: number; y: number; scale: number }
+type View = {
+  x: number
+  y: number
+  scale: number
+  viewportWidth?: number
+  viewportHeight?: number
+}
 
 const VIEWS_KEY = 'sceneViews'
 
@@ -28,8 +34,15 @@ function loadViews(): Record<string, View> {
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? '{}')
     if (!raw || typeof raw !== 'object') return {}
-    const ok = (v: unknown): v is View =>
-      !!v && typeof v === 'object' && ['x', 'y', 'scale'].every((k) => Number.isFinite((v as Record<string, unknown>)[k]))
+    const ok = (v: unknown): v is View => {
+      if (!v || typeof v !== 'object') return false
+      const view = v as Record<string, unknown>
+      return (
+        ['x', 'y', 'scale'].every((k) => typeof view[k] === 'number' && Number.isFinite(view[k])) &&
+        (view.viewportWidth === undefined || (typeof view.viewportWidth === 'number' && view.viewportWidth > 0)) &&
+        (view.viewportHeight === undefined || (typeof view.viewportHeight === 'number' && view.viewportHeight > 0))
+      )
+    }
     return Object.fromEntries(Object.entries(raw).filter(([, v]) => ok(v)))
   } catch {
     return {}
@@ -37,11 +50,43 @@ function loadViews(): Record<string, View> {
 }
 
 function fitToViewport(scene: Scene, viewport: { width: number; height: number }): View {
-  const scale = Math.min(1, viewport.width / scene.width, viewport.height / scene.height)
+  const scale = Math.min(MAX_ZOOM, viewport.width / scene.width, viewport.height / scene.height)
   return {
     scale,
     x: (viewport.width - scene.width * scale) / 2,
     y: (viewport.height - scene.height * scale) / 2,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
+  }
+}
+
+function adaptViewToViewport(
+  scene: Scene,
+  saved: View,
+  viewport: { width: number; height: number },
+): View {
+  if (!saved.viewportWidth || !saved.viewportHeight)
+    return fitToViewport(scene, viewport)
+  if (saved.viewportWidth === viewport.width && saved.viewportHeight === viewport.height) return saved
+
+  const oldViewport = { width: saved.viewportWidth, height: saved.viewportHeight }
+  const oldFit = fitToViewport(scene, oldViewport)
+  const nextFit = fitToViewport(scene, viewport)
+  const isFit =
+    Math.abs(saved.scale - oldFit.scale) < 0.001 &&
+    Math.abs(saved.x - oldFit.x) < 1 &&
+    Math.abs(saved.y - oldFit.y) < 1
+  if (isFit) return nextFit
+
+  const scale = saved.scale * (nextFit.scale / oldFit.scale)
+  const centerX = (oldViewport.width / 2 - saved.x) / saved.scale
+  const centerY = (oldViewport.height / 2 - saved.y) / saved.scale
+  return {
+    scale,
+    x: viewport.width / 2 - centerX * scale,
+    y: viewport.height / 2 - centerY * scale,
+    viewportWidth: viewport.width,
+    viewportHeight: viewport.height,
   }
 }
 
@@ -80,6 +125,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const [sceneId, setSceneId] = useState<string | null>(null)
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
   const [preview, setPreview] = useState<GridPreview | null>(null)
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
@@ -130,22 +176,29 @@ export default function App() {
   const viewKey = scene ? `${scene.id}:${scene.imageUrl ?? ''}` : ''
   const fitView = scene ? fitToViewport(scene, viewport) : { x: 0, y: 0, scale: 1 }
   // Each scene (and image) remembers its own view; one never visited shows the whole map.
-  const view = views[viewKey] ?? fitView
-  const setView = (v: View) => setViews((prev) => ({ ...prev, [viewKey]: v }))
+  const savedView = views[viewKey]
+  const view = scene && savedView ? adaptViewToViewport(scene, savedView, viewport) : fitView
+  const setView = (v: View) =>
+    setViews((prev) => ({
+      ...prev,
+      [viewKey]: { ...v, viewportWidth: viewport.width, viewportHeight: viewport.height },
+    }))
 
   useEffect(() => {
     localStorage.setItem(VIEWS_KEY, JSON.stringify(views))
   }, [views])
 
   useEffect(() => {
+    if (!session) return
     const el = viewportRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) =>
       setViewport({ width: entry.contentRect.width, height: entry.contentRect.height }),
     )
     observer.observe(el)
+    setViewport({ width: el.clientWidth, height: el.clientHeight })
     return () => observer.disconnect()
-  }, [])
+  }, [session])
 
   const zoomAt = (px: number, py: number, factor: number) => {
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * factor))
@@ -227,12 +280,20 @@ export default function App() {
     conn.on('ChapterDeleted', (id: string) => setChapters((prev) => prev.filter((c) => c.id !== id)))
     conn.on('SceneAdded', applyScene)
     conn.on('SceneUpdated', applyScene)
-    conn.on('SceneDeleted', (id: string) => {
+    conn.on('ActiveSceneChanged', (id: string | null) => {
+      setActiveSceneId(id)
+      if (id && sceneRef.current !== id)
+        void joinScene(id).catch((e: unknown) =>
+          setError(e instanceof Error ? e.message : 'Could not open the active scene.'),
+        )
+    })
+    conn.on('SceneDeleted', (id: string, nextActiveSceneId: string | null) => {
       setScenes((prev) => prev.filter((s) => s.id !== id))
+      setActiveSceneId(nextActiveSceneId)
       setPreview((p) => (p?.sceneId === id ? null : p))
       if (sceneRef.current !== id) return
-      const next = scenesRef.current.find((s) => s.id !== id)
-      if (next) void joinScene(next.id)
+      const next = nextActiveSceneId ?? scenesRef.current.find((s) => s.id !== id)?.id
+      if (next) void joinScene(next)
       else {
         sceneRef.current = null
         setSceneId(null)
@@ -248,9 +309,10 @@ export default function App() {
       setChapters(state.chapters)
       setScenes(state.scenes)
       setTokens(state.tokens)
-      // Open the first scene in chapter order, not the raw first scene.
+      setActiveSceneId(state.activeSceneId)
+      // Players always join the GM's active scene; the GM may browse another scene locally.
       const first = state.chapters.flatMap((c) => state.scenes.filter((s) => s.chapterId === c.id))[0]
-      const id = sceneRef.current ?? first?.id
+      const id = isGm ? sceneRef.current ?? state.activeSceneId ?? first?.id : state.activeSceneId ?? first?.id
       if (id) await joinScene(id)
       setStatus('connected')
     }
@@ -272,7 +334,7 @@ export default function App() {
     return () => {
       void conn.stop()
     }
-  }, [userId, joinScene, applyScene, applyChapter, applyToken])
+  }, [userId, isGm, joinScene, applyScene, applyChapter, applyToken])
 
   const invoke = async <T,>(method: string, ...args: unknown[]): Promise<T | undefined> => {
     try {
@@ -335,6 +397,9 @@ export default function App() {
       setTokens([])
       setPlacements([])
       setCombat(null)
+      setActiveSceneId(null)
+      sceneRef.current = null
+      setSceneId(null)
       setGameName('')
       setError(null)
     } catch (e) {
@@ -494,6 +559,19 @@ export default function App() {
   const changeTokenKind = async (tokenId: string, isPlayer: boolean) => {
     const token = await invoke<Token | null>('SetTokenKind', tokenId, isPlayer)
     if (token) applyToken(token)
+  }
+
+  const handleSetActiveScene = async (id: string) => {
+    const activeId = await invoke<string | null>('SetActiveScene', id)
+    if (!activeId) return
+    setActiveSceneId(activeId)
+    if (sceneRef.current !== activeId) {
+      try {
+        await joinScene(activeId)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not open the active scene.')
+      }
+    }
   }
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
@@ -679,6 +757,8 @@ export default function App() {
               chapters={chapters}
               scenes={scenes}
               sceneId={sceneId}
+              activeSceneId={activeSceneId}
+              onSetActiveScene={(id) => void handleSetActiveScene(id)}
               onSelect={(id) => void joinScene(id)}
               onAdd={handleAddChapter}
               onRename={(id, name) => void handleRenameChapter(id, name)}

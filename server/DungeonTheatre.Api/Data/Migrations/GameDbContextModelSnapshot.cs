@@ -67,6 +67,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ActiveSceneId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("InviteCode")
                         .IsRequired()
                         .HasColumnType("TEXT");

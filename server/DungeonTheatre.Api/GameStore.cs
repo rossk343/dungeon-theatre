@@ -15,7 +15,9 @@ public record Scene(
 // Where a token sits on one scene, in map pixel coordinates.
 public record Placement(string SceneId, string TokenId, double X, double Y);
 
-public record GameState(string GameName, IReadOnlyList<Chapter> Chapters, IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens);
+public record GameState(
+    string GameName, IReadOnlyList<Chapter> Chapters, IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens,
+    string? ActiveSceneId);
 
 // Scoped: one DbContext per hub invocation.
 public class GameStore(GameDbContext db)
@@ -50,8 +52,28 @@ public class GameStore(GameDbContext db)
             .Where(s => db.Chapters.Any(c => c.Id == s.ChapterId && c.GameId == DefaultGameId))
             .OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ToListAsync();
         var tokens = await db.Tokens.AsNoTracking().Where(t => t.GameId == DefaultGameId).OrderBy(t => t.Name).ToListAsync();
+        var firstSceneId = chapters.SelectMany(c => scenes.Where(s => s.ChapterId == c.Id)).FirstOrDefault()?.Id;
+        var activeSceneId = game?.ActiveSceneId is { } storedId && scenes.Any(s => s.Id == storedId)
+            ? storedId
+            : firstSceneId;
         return new GameState(game?.Name ?? "", chapters.Select(ToDto).ToList(), scenes.Select(ToDto).ToList(),
-            tokens.Select(ToDto).ToList());
+            tokens.Select(ToDto).ToList(), activeSceneId);
+    }
+
+    public async Task<string?> GetActiveSceneIdAsync()
+    {
+        var state = await GetStateAsync();
+        return state.ActiveSceneId;
+    }
+
+    public async Task<string?> SetActiveSceneAsync(string sceneId)
+    {
+        if (!await SceneExistsAsync(sceneId)) return null;
+        var game = await db.Games.FirstOrDefaultAsync(g => g.Id == DefaultGameId);
+        if (game is null) return null;
+        game.ActiveSceneId = sceneId;
+        await db.SaveChangesAsync();
+        return sceneId;
     }
 
     public Task<bool> ChapterExistsAsync(string chapterId) =>
@@ -129,6 +151,12 @@ public class GameStore(GameDbContext db)
         };
         db.Scenes.Add(entity);
         await db.SaveChangesAsync();
+        var game = await db.Games.FirstOrDefaultAsync(g => g.Id == DefaultGameId);
+        if (game is not null && game.ActiveSceneId is null)
+        {
+            game.ActiveSceneId = entity.Id;
+            await db.SaveChangesAsync();
+        }
         return ToDto(entity);
     }
 
@@ -207,13 +235,21 @@ public class GameStore(GameDbContext db)
     }
 
     // Placements go with the scene (cascade); tokens are untouched.
-    public async Task<(bool Found, string? ImageUrl)> DeleteSceneAsync(string sceneId)
+    public async Task<(bool Found, string? ImageUrl, string? ActiveSceneId)> DeleteSceneAsync(string sceneId)
     {
         var entity = await db.Scenes.FindAsync(sceneId);
-        if (entity is null) return (false, null);
+        if (entity is null) return (false, null, null);
+        var game = await db.Games.FirstOrDefaultAsync(g => g.Id == DefaultGameId);
+        var wasActive = game?.ActiveSceneId == sceneId;
         db.Scenes.Remove(entity);
         await db.SaveChangesAsync();
-        return (true, entity.ImageUrl);
+        if (wasActive && game is not null)
+        {
+            var state = await GetStateAsync();
+            game.ActiveSceneId = state.ActiveSceneId;
+            await db.SaveChangesAsync();
+        }
+        return (true, entity.ImageUrl, await GetActiveSceneIdAsync());
     }
 
     public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, bool isPlayer, string? imageUrl)
