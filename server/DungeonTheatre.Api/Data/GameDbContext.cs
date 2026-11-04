@@ -46,6 +46,7 @@ public class TokenEntity
     public int Hp { get; set; }
     public int MaxHp { get; set; }
     public int SpeedFeet { get; set; } = 30;
+    public int ArmorClass { get; set; } = 10;
     // Player tokens can be edited and moved by any player; the rest belong to the GM.
     public bool IsPlayer { get; set; }
     public string? ImageUrl { get; set; }

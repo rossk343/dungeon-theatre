@@ -179,6 +179,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ArmorClass")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasColumnType("TEXT");

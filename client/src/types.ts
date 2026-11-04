@@ -5,6 +5,7 @@ export interface Token {
   hp: number
   maxHp: number
   speedFeet: number
+  armorClass: number | null
   isPlayer: boolean
   imageUrl: string | null
 }

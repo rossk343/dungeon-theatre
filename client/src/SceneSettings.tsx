@@ -147,6 +147,7 @@ export function NewTokenForm({
     color: string,
     maxHp: number,
     speedFeet: number,
+    armorClass: number,
     isPlayer: boolean,
     file: File | null,
   ) => Promise<boolean>
@@ -155,13 +156,17 @@ export function NewTokenForm({
   const [color, setColor] = useState('#8a6d3b')
   const [maxHp, setMaxHp] = useState('10')
   const [speed, setSpeed] = useState('30')
+  const [armorClass, setArmorClass] = useState('10')
   const [isPlayer, setIsPlayer] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [inputKey, setInputKey] = useState(0)
   const hp = Math.round(Number(maxHp))
   const spd = Math.round(Number(speed))
+  const ac = Math.round(Number(armorClass))
   const valid =
-    name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999 && Number.isFinite(spd) && spd >= 0 && spd <= 999
+    name.trim() !== '' && Number.isFinite(hp) && hp >= 1 && hp <= 9999 &&
+    Number.isFinite(spd) && spd >= 0 && spd <= 999 &&
+    armorClass.trim() !== '' && Number.isFinite(ac) && ac >= 0 && ac <= 99
 
   return (
     <section className="panel">
@@ -196,6 +201,16 @@ export function NewTokenForm({
             onChange={(e) => setSpeed(e.target.value)}
           />
         </label>
+        <label className="token-create-field token-create-ac">
+          <span>AC</span>
+          <input
+            type="number"
+            min={0}
+            max={99}
+            value={armorClass}
+            onChange={(e) => setArmorClass(e.target.value)}
+          />
+        </label>
       </div>
       <label className="token-create-field token-create-type">
         <span>Token type</span>
@@ -217,7 +232,7 @@ export function NewTokenForm({
       <button
         disabled={busy || !valid}
         onClick={async () => {
-          if (await onCreate(name.trim(), color, hp, spd, isPlayer, file)) {
+          if (await onCreate(name.trim(), color, hp, spd, ac, isPlayer, file)) {
             setName('')
             setFile(null)
             setIsPlayer(false)

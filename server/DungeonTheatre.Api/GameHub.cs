@@ -11,8 +11,17 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     private const string SceneKey = "scene";
 
     public static string Group(string sceneId) => $"scene:{sceneId}";
+    public const string GmGroup = "role:gm";
+    public const string PlayerGroup = "role:player";
 
     private bool IsGm => Context.User?.IsInRole(Roles.Gm) == true;
+
+    public override async Task OnConnectedAsync()
+    {
+        var roleGroup = IsGm ? GmGroup : PlayerGroup;
+        await Groups.AddToGroupAsync(Context.ConnectionId, roleGroup);
+        await base.OnConnectedAsync();
+    }
 
     private void RequireGm()
     {
@@ -68,7 +77,13 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return result;
     }
 
-    public Task<GameState> GetState() => store.GetStateAsync();
+    public async Task<GameState> GetState()
+    {
+        var state = await store.GetStateAsync();
+        return IsGm
+            ? state
+            : state with { Tokens = state.Tokens.Select(token => token.ForPlayerView()).ToList() };
+    }
 
     public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {
@@ -178,14 +193,17 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return scene;
     }
 
-    // Token properties are game-wide, so every connection hears about them.
-    public async Task<Token?> UpdateToken(string tokenId, string name, int hp, int speedFeet)
+    // NPC Armour Class is omitted from player views.
+    public async Task<Token?> UpdateToken(string tokenId, string name, int hp, int speedFeet, int armorClass)
     {
         if (!IsGm && !await store.IsPlayerTokenAsync(tokenId))
             throw new HubException("Players can only edit player tokens.");
-        var token = await store.UpdateTokenAsync(tokenId, name, hp, speedFeet);
+        var token = await store.UpdateTokenAsync(tokenId, name, hp, speedFeet, armorClass);
         if (token is not null)
-            await Clients.Others.SendAsync("TokenUpdated", token);
+        {
+            await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);
+            await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", token.ForPlayerView());
+        }
         return token;
     }
 
@@ -194,7 +212,10 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         RequireGm();
         var token = await store.SetTokenKindAsync(tokenId, isPlayer);
         if (token is not null)
-            await Clients.Others.SendAsync("TokenUpdated", token);
+        {
+            await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);
+            await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", token.ForPlayerView());
+        }
         return token;
     }
 }

@@ -533,10 +533,11 @@ export default function App() {
     color: string,
     maxHp: number,
     speedFeet: number,
+    armorClass: number,
     isPlayer: boolean,
     file: File | null,
   ) => {
-    const t = await run(() => createToken(name, color, maxHp, speedFeet, isPlayer, file))
+    const t = await run(() => createToken(name, color, maxHp, speedFeet, armorClass, isPlayer, file))
     if (t) applyToken(t)
     return t !== null
   }
@@ -618,10 +619,10 @@ export default function App() {
     void invoke('RemovePlacement', sceneId, tokenId)
   }
 
-  const saveToken = (t: Token, name: string, hp: number, speedFeet: number) => {
-    const next = { ...t, name, hp: Math.min(Math.max(hp, 0), t.maxHp), speedFeet }
+  const saveToken = (t: Token, name: string, hp: number, speedFeet: number, armorClass: number) => {
+    const next = { ...t, name, hp: Math.min(Math.max(hp, 0), t.maxHp), speedFeet, armorClass }
     setTokens((prev) => prev.map((p) => (p.id === t.id ? next : p)))
-    void invoke('UpdateToken', t.id, name, hp, speedFeet)
+    void invoke('UpdateToken', t.id, name, hp, speedFeet, armorClass)
   }
 
   const resetMovement = async () => {
@@ -750,7 +751,7 @@ export default function App() {
           placements={placements}
           onFocus={focusToken}
           onSetInitiative={(tokenId, n) => combatCall('SetInitiative', tokenId, n)}
-          onSetHealth={(token, hp) => saveToken(token, token.name, hp, token.speedFeet)}
+          onSetHealth={(token, hp) => saveToken(token, token.name, hp, token.speedFeet, token.armorClass ?? 10)}
           onRemove={(tokenId) => combatCall('RemoveInitiative', tokenId)}
           onStart={() => combatCall('StartCombat')}
           onNext={() => combatCall('NextTurn')}
@@ -1047,7 +1048,7 @@ function TokenRow(props: {
   token: Token
   isGm: boolean
   onScene: boolean
-  onSave: (t: Token, name: string, hp: number, speedFeet: number) => void
+  onSave: (t: Token, name: string, hp: number, speedFeet: number, armorClass: number) => void
   onAdd: () => void
   onRemove: () => void
   onArt: (file: File) => void
@@ -1092,7 +1093,7 @@ function TokenRow(props: {
           maxLength={40}
           aria-label={`${token.name} name`}
           disabled={!canEdit}
-          onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
+          onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet, token.armorClass ?? 10)}
         />
       </label>
       {isGm || token.isPlayer ? (
@@ -1107,7 +1108,7 @@ function TokenRow(props: {
               aria-label={`${token.name} HP`}
               defaultValue={token.hp}
               disabled={!canEdit}
-              onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
+              onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet, token.armorClass ?? 10)}
             />
             <span>/{token.maxHp}</span>
           </div>
@@ -1133,13 +1134,31 @@ function TokenRow(props: {
             disabled={!canEdit}
             onBlur={(e) => {
               const n = Math.round(Number(e.target.value))
-              if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n)
+              if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n, token.armorClass ?? 10)
               else e.target.value = String(token.speedFeet)
             }}
           />
           <span>ft</span>
         </div>
       </label>
+      {(isGm || token.isPlayer) && <label className="token-field token-ac-field">
+        <span>AC</span>
+        <input
+          key={`a${token.armorClass}`}
+          type="number"
+          min={0}
+          max={99}
+          aria-label={`${token.name} Armour Class`}
+          defaultValue={token.armorClass ?? 10}
+          disabled={!canEdit}
+          onBlur={(e) => {
+            const n = Math.round(Number(e.target.value))
+            if (e.target.value !== '' && n >= 0 && n <= 99)
+              props.onSave(token, token.name, token.hp, token.speedFeet, n)
+            else e.target.value = String(token.armorClass ?? 10)
+          }}
+        />
+      </label>}
       {isGm && (
         <select
           aria-label={`${token.name} token type`}

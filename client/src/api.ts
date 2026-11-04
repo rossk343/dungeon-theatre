@@ -100,6 +100,7 @@ export function createToken(
   color: string,
   maxHp: number,
   speedFeet: number,
+  armorClass: number,
   isPlayer: boolean,
   file: File | null,
 ): Promise<Token> {
@@ -108,6 +109,7 @@ export function createToken(
   form.append('color', color)
   form.append('maxHp', String(maxHp))
   form.append('speedFeet', String(speedFeet))
+  form.append('armorClass', String(armorClass))
   form.append('isPlayer', String(isPlayer))
   if (file) form.append('file', file)
   return request('/api/tokens', 'POST', form)

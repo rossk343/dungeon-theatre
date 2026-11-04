@@ -404,7 +404,7 @@ button.danger {
 
 .player-token-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 90px 100px;
+  grid-template-columns: 36px minmax(0, 1fr) 90px 100px 64px;
   align-items: start;
   gap: 6px;
   padding: 8px 0;
@@ -491,9 +491,18 @@ button.danger {
   grid-row: 2;
 }
 
+.player-token-row .token-ac-field {
+  grid-column: 5 / 6;
+  grid-row: 2;
+}
+
+.player-token-row .token-ac-field > input {
+  box-sizing: border-box;
+}
+
 .gm-token-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 64px 72px;
+  grid-template-columns: 36px minmax(0, 1fr) 64px 72px 64px;
   align-items: start;
   gap: 6px;
   padding: 8px 0;
@@ -535,8 +544,14 @@ button.danger {
   grid-row: 2;
 }
 
+.gm-token-row .token-ac-field {
+  grid-column: 5 / 6;
+  grid-row: 2;
+}
+
 .gm-token-row .token-hp,
-.gm-token-row .token-speed {
+.gm-token-row .token-speed,
+.gm-token-row .token-ac-field > input {
   width: 100%;
   box-sizing: border-box;
 }
@@ -563,7 +578,7 @@ button.danger {
 
 .token-create-fields {
   display: grid;
-  grid-template-columns: 74px repeat(2, minmax(0, 1fr));
+  grid-template-columns: 74px repeat(3, minmax(0, 1fr));
   gap: 6px;
   align-items: end;
 }

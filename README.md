@@ -42,7 +42,7 @@ A game contains chapters, and chapters contain scenes. Use the **Chapters** pane
 
 The GM can mark a scene as **Active** in the scene list. Changing the active scene switches connected players to it, and players cannot join other scenes until the GM changes the active scene again.
 
-Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, optional art), replace their art, or delete them. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
+Tokens are a game-wide library; scenes only store placements. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, speed, armour class, optional art), replace their art, or delete them. Armour class is editable for all tokens by the GM and for player tokens by players; NPC armour class is GM-only. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
 
 ## Initiative and movement
 
@@ -54,7 +54,7 @@ Each token has a speed in feet (default 30, editable in the Tokens list). During
 
 The first account registered becomes the GM; that first registration does not need an invite code. The GM can share the displayed invite code with players, who can create password accounts or join as guests. Guests are players too. Accounts use a username and password for now; SSO is a future option.
 
-The GM manages scenes, chapters, token creation and placement, and combat setup. The GM can mark tokens as player-controlled or NPC/enemy-controlled. The player token panel lists only player-controlled tokens; NPCs remain visible in the initiative tracker. Players can edit the name, HP, speed and art of any player token, and can move any player token outside combat. NPC HP is hidden from players; they see red, amber, or green boxes for NPC health (red at 25% or less, amber above 25% through 50%, green above 50%). In combat, only the current player token can be moved by a player, and players may advance a player token's turn. The server enforces these permissions; hiding controls in the client is only a usability measure. The auth cookie is HttpOnly and SameSite=Strict.
+The GM manages scenes, chapters, token creation and placement, and combat setup. The GM can mark tokens as player-controlled or NPC/enemy-controlled. The player token panel lists only player-controlled tokens; NPCs remain visible in the initiative tracker. Players can edit the name, HP, speed, armour class and art of any player token, and can move any player token outside combat. NPC HP and armour class are hidden from players; they see red, amber, or green boxes for NPC health (red at 25% or less, amber above 25% through 50%, green above 50%). In combat, only the current player token can be moved by a player, and players may advance a player token's turn. The server enforces these permissions; hiding controls in the client is only a usability measure. The auth cookie is HttpOnly and SameSite=Strict.
 
 ## Map images and grid
 - Create a scene from the **New scene** panel (name plus a PNG, JPEG, WebP or GIF), or use **Replace map image** on an existing scene.

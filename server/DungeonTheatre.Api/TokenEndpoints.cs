@@ -14,7 +14,7 @@ public static class TokenEndpoints
 
         // Art is optional on create; a token without it renders as a coloured disc.
         group.MapPost("/", async ([FromForm] string? name, [FromForm] string? color, [FromForm] int? maxHp,
-                    [FromForm] int? speedFeet, [FromForm] bool? isPlayer, IFormFile? file, GameStore store, MapImageStorage images,
+                    [FromForm] int? speedFeet, [FromForm] int? armorClass, [FromForm] bool? isPlayer, IFormFile? file, GameStore store, MapImageStorage images,
                     IHubContext<GameHub> hub) =>
         {
             if (!GameStore.IsValidName(name, 40))
@@ -27,6 +27,9 @@ public static class TokenEndpoints
             var speed = speedFeet ?? 30;
             if (!GameStore.IsValidSpeed(speed))
                 return Results.BadRequest(new { error = "Speed must be between 0 and 999 ft." });
+            var ac = armorClass ?? 10;
+            if (!GameStore.IsValidArmorClass(ac))
+                return Results.BadRequest(new { error = "Armour Class must be between 0 and 99." });
 
             StoredImage? image = null;
             if (file is not null)
@@ -38,13 +41,14 @@ public static class TokenEndpoints
 
             try
             {
-                var token = await store.CreateTokenAsync(name!, color!, maxHp.Value, speed, isPlayer ?? false, image?.Url);
+                var token = await store.CreateTokenAsync(name!, color!, maxHp.Value, speed, ac, isPlayer ?? false, image?.Url);
                 if (token is null)
                 {
                     images.Delete(image?.Url);
                     return Results.BadRequest(new { error = "Invalid token." });
                 }
-                await hub.Clients.All.SendAsync("TokenAdded", token);
+                await hub.Clients.Group(GameHub.GmGroup).SendAsync("TokenAdded", token);
+                await hub.Clients.Group(GameHub.PlayerGroup).SendAsync("TokenAdded", token.ForPlayerView());
                 return Results.Ok(token);
             }
             catch
@@ -70,7 +74,8 @@ public static class TokenEndpoints
             }
 
             images.Delete(result.Value.OldImageUrl);
-            await hub.Clients.All.SendAsync("TokenUpdated", result.Value.Token);
+            await hub.Clients.Group(GameHub.GmGroup).SendAsync("TokenUpdated", result.Value.Token);
+            await hub.Clients.Group(GameHub.PlayerGroup).SendAsync("TokenUpdated", result.Value.Token.ForPlayerView());
             return Results.Ok(result.Value.Token);
         });
 

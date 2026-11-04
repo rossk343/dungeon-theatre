@@ -4,7 +4,11 @@ using Microsoft.EntityFrameworkCore;
 namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
-public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, bool IsPlayer, string? ImageUrl);
+public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, int? ArmorClass,
+    bool IsPlayer, string? ImageUrl)
+{
+    public Token ForPlayerView() => IsPlayer ? this : this with { ArmorClass = null };
+}
 
 public record Chapter(string Id, string Name, int SortOrder);
 
@@ -34,8 +38,10 @@ public class GameStore(GameDbContext db)
     private const int MaxSpeedFeet = 999;
 
     public static bool IsValidSpeed(int speed) => speed is >= 0 and <= MaxSpeedFeet;
+    public static bool IsValidArmorClass(int armorClass) => armorClass is >= 0 and <= 99;
 
-    private static Token ToDto(TokenEntity t) => new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.IsPlayer, t.ImageUrl);
+    private static Token ToDto(TokenEntity t) =>
+        new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ArmorClass, t.IsPlayer, t.ImageUrl);
 
     private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
 
@@ -208,15 +214,16 @@ public class GameStore(GameDbContext db)
     public async Task<bool> RemovePlacementAsync(string sceneId, string tokenId) =>
         await db.Placements.Where(p => p.SceneId == sceneId && p.TokenId == tokenId).ExecuteDeleteAsync() > 0;
 
-    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp, int speedFeet)
+    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp, int speedFeet, int armorClass)
     {
         name = name.Trim();
-        if (name.Length is 0 or > 40 || !IsValidSpeed(speedFeet)) return null;
+        if (name.Length is 0 or > 40 || !IsValidSpeed(speedFeet) || !IsValidArmorClass(armorClass)) return null;
         var entity = await db.Tokens.FindAsync(tokenId);
         if (entity is null) return null;
         entity.Name = name;
         entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
         entity.SpeedFeet = speedFeet;
+        entity.ArmorClass = armorClass;
         await db.SaveChangesAsync();
         return ToDto(entity);
     }
@@ -252,10 +259,12 @@ public class GameStore(GameDbContext db)
         return (true, entity.ImageUrl, await GetActiveSceneIdAsync());
     }
 
-    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, bool isPlayer, string? imageUrl)
+    public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, int armorClass,
+        bool isPlayer, string? imageUrl)
     {
         name = name.Trim();
-        if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 || !IsValidSpeed(speedFeet))
+        if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 ||
+            !IsValidSpeed(speedFeet) || !IsValidArmorClass(armorClass))
             return null;
         var entity = new TokenEntity
         {
@@ -266,6 +275,7 @@ public class GameStore(GameDbContext db)
             Hp = maxHp,
             MaxHp = maxHp,
             SpeedFeet = speedFeet,
+            ArmorClass = armorClass,
             IsPlayer = isPlayer,
             ImageUrl = imageUrl,
         };
