@@ -167,6 +167,7 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarOpen') !== 'false')
+  const [sidebarTab, setSidebarTab] = useState<'chapters' | 'scene' | 'tokens'>('chapters')
   const isGm = session?.user.role === 'gm'
 
   useEffect(() => {
@@ -881,58 +882,126 @@ export default function App() {
               {error}
             </p>
           )}
-          {isGm && (
-            <ChapterTree
-              chapters={chapters}
-              scenes={scenes}
-              sceneId={sceneId}
-              activeSceneId={activeSceneId}
-              onSetActiveScene={(id) => void handleSetActiveScene(id)}
-              onSelect={(id) => void joinScene(id)}
-              onAdd={handleAddChapter}
-              onRename={(id, name) => void handleRenameChapter(id, name)}
-              onDelete={handleDeleteChapter}
-            />
+          {isGm ? (
+            <>
+              <div className="sidebar-tabs" role="tablist" aria-label="GM sections">
+                <button
+                  id="sidebar-tab-chapters"
+                  role="tab"
+                  aria-selected={sidebarTab === 'chapters'}
+                  aria-controls="sidebar-tabpanel"
+                  className={sidebarTab === 'chapters' ? 'active' : ''}
+                  onClick={() => setSidebarTab('chapters')}
+                >
+                  Chapters
+                </button>
+                <button
+                  id="sidebar-tab-scene"
+                  role="tab"
+                  aria-selected={sidebarTab === 'scene'}
+                  aria-controls="sidebar-tabpanel"
+                  className={sidebarTab === 'scene' ? 'active' : ''}
+                  onClick={() => setSidebarTab('scene')}
+                >
+                  Scene
+                </button>
+                <button
+                  id="sidebar-tab-tokens"
+                  role="tab"
+                  aria-selected={sidebarTab === 'tokens'}
+                  aria-controls="sidebar-tabpanel"
+                  className={sidebarTab === 'tokens' ? 'active' : ''}
+                  onClick={() => setSidebarTab('tokens')}
+                >
+                  Tokens
+                </button>
+              </div>
+              <div
+                id="sidebar-tabpanel"
+                role="tabpanel"
+                aria-labelledby={`sidebar-tab-${sidebarTab}`}
+              >
+                {sidebarTab === 'chapters' && (
+                  <>
+                    <ChapterTree
+                      chapters={chapters}
+                      scenes={scenes}
+                      sceneId={sceneId}
+                      activeSceneId={activeSceneId}
+                      onSetActiveScene={(id) => void handleSetActiveScene(id)}
+                      onSelect={(id) => void joinScene(id)}
+                      onAdd={handleAddChapter}
+                      onRename={(id, name) => void handleRenameChapter(id, name)}
+                      onDelete={handleDeleteChapter}
+                    />
+                    <NewSceneForm
+                      busy={uploading}
+                      chapters={chapters}
+                      defaultChapterId={savedScene?.chapterId ?? null}
+                      onCreate={handleCreate}
+                    />
+                  </>
+                )}
+                {sidebarTab === 'scene' && (
+                  savedScene ? (
+                    <SceneSettings
+                      key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
+                      scene={savedScene}
+                      chapters={chapters}
+                      busy={uploading}
+                      onPreview={setPreview}
+                      onSave={saveGrid}
+                      onReplaceImage={(f) => void handleReplaceImage(f)}
+                      onRename={renameScene}
+                      onMove={(id) => void handleMoveScene(id)}
+                      onDelete={handleDeleteScene}
+                    />
+                  ) : <section className="panel"><p className="hint">Select a scene from Chapters to edit its settings.</p></section>
+                )}
+                {sidebarTab === 'tokens' && (
+                  <>
+                    <NewTokenForm busy={uploading} onCreate={handleCreateToken} />
+                    <section className="panel">
+                      <h2>Tokens</h2>
+                      {tokens.map((t) => (
+                        <TokenRow
+                          key={t.id}
+                          token={t}
+                          isGm
+                          onScene={placed.has(t.id)}
+                          onSave={saveToken}
+                          onAdd={() => addToScene(t.id)}
+                          onRemove={() => removeFromScene(t.id)}
+                          onArt={(f) => void handleTokenArt(t, f)}
+                          onDelete={() => handleDeleteToken(t)}
+                          onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
+                        />
+                      ))}
+                    </section>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <section className="panel">
+              <h2>Players</h2>
+              {tokens.filter((t) => t.isPlayer).map((t) => (
+                <TokenRow
+                  key={t.id}
+                  token={t}
+                  isGm={false}
+                  onScene={placed.has(t.id)}
+                  onSave={saveToken}
+                  onAdd={() => addToScene(t.id)}
+                  onRemove={() => removeFromScene(t.id)}
+                  onArt={(f) => void handleTokenArt(t, f)}
+                  onDelete={() => handleDeleteToken(t)}
+                  onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
+                />
+              ))}
+              {!tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
+            </section>
           )}
-          {isGm && savedScene && (
-            <SceneSettings
-              key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
-              scene={savedScene}
-              chapters={chapters}
-              busy={uploading}
-              onPreview={setPreview}
-              onSave={saveGrid}
-              onReplaceImage={(f) => void handleReplaceImage(f)}
-              onRename={renameScene}
-              onMove={(id) => void handleMoveScene(id)}
-              onDelete={handleDeleteScene}
-            />
-          )}
-          {isGm && <NewSceneForm
-            busy={uploading}
-            chapters={chapters}
-            defaultChapterId={savedScene?.chapterId ?? null}
-            onCreate={handleCreate}
-          />}
-          {isGm && <NewTokenForm busy={uploading} onCreate={handleCreateToken} />}
-          <section className="panel">
-            <h2>{isGm ? 'Tokens' : 'Players'}</h2>
-            {tokens.filter((t) => isGm || t.isPlayer).map((t) => (
-              <TokenRow
-                key={t.id}
-                token={t}
-                isGm={isGm}
-                onScene={placed.has(t.id)}
-                onSave={saveToken}
-                onAdd={() => addToScene(t.id)}
-                onRemove={() => removeFromScene(t.id)}
-                onArt={(f) => void handleTokenArt(t, f)}
-                onDelete={() => handleDeleteToken(t)}
-                onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
-              />
-            ))}
-            {!isGm && !tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
-          </section>
         </aside>
       </main>
     </div>

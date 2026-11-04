@@ -187,6 +187,31 @@ main {
 aside {
   width: 360px;
   flex: none;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+aside .sidebar-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding-bottom: 8px;
+  background: #14111a;
+}
+
+aside .sidebar-tabs button {
+  padding: 7px 4px;
+}
+
+aside .sidebar-tabs button.active {
+  border-color: #8a659d;
+}
+
+aside [role='tabpanel'] {
+  min-width: 0;
 }
 
 aside h2 {
@@ -376,7 +401,7 @@ button.danger {
 
 .player-token-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 90px 100px;
+  grid-template-columns: 36px minmax(0, 1fr) 90px 100px;
   align-items: start;
   gap: 6px;
   padding: 8px 0;
@@ -389,11 +414,27 @@ button.danger {
 }
 
 .player-token-row > .token-art-trigger,
-.player-token-row > .swatch {
+.player-token-row > .swatch,
+.gm-token-row > .token-art-trigger,
+.gm-token-row > .swatch {
   grid-column: 1;
-  grid-row: 1 / 3;
+  grid-row: 1;
   justify-self: center;
-  align-self: center;
+  align-self: end;
+}
+
+.player-token-row > .swatch,
+.gm-token-row > .swatch,
+.player-token-row > .token-art-trigger .swatch,
+.gm-token-row > .token-art-trigger .swatch {
+  width: 30px;
+  height: 30px;
+}
+
+.player-token-row img.swatch,
+.gm-token-row img.swatch {
+  width: 34px;
+  height: 34px;
 }
 
 .player-token-row .token-field {
@@ -438,13 +479,131 @@ button.danger {
 }
 
 .player-token-row .token-hp-field {
-  grid-column: 2 / 4;
+  grid-column: 1 / 4;
   grid-row: 2;
 }
 
 .player-token-row .token-speed-field {
   grid-column: 4 / 5;
   grid-row: 2;
+}
+
+.gm-token-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 64px 72px;
+  align-items: start;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid #3a3347;
+}
+
+.gm-token-row:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.gm-token-row .token-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: #c6bdad;
+}
+
+.gm-token-row .token-name-field {
+  grid-column: 2 / -1;
+  grid-row: 1;
+}
+
+.gm-token-row .token-name-field > input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gm-token-row .token-hp-field {
+  grid-column: 1 / 3;
+  grid-row: 2;
+}
+
+.gm-token-row .token-speed-field {
+  grid-column: 3 / 5;
+  grid-row: 2;
+}
+
+.gm-token-row .token-hp,
+.gm-token-row .token-speed {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gm-token-row > select {
+  grid-column: 1 / 3;
+  grid-row: 3;
+  min-width: 0;
+  justify-self: start;
+}
+
+.gm-token-row > button:not(.danger) {
+  grid-column: 3 / 4;
+  grid-row: 3;
+  padding-inline: 4px;
+  justify-self: start;
+}
+
+.gm-token-row > button.danger {
+  grid-column: 4 / 5;
+  grid-row: 3;
+  justify-self: start;
+}
+
+.token-create-fields {
+  display: grid;
+  grid-template-columns: 74px repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+}
+
+.token-create-fields > .token-create-field,
+.panel > .token-create-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  color: #c6bdad;
+}
+
+.token-create-fields > .token-create-field input,
+.token-create-fields > .token-create-field select,
+.panel > .token-create-field input,
+.panel > .token-create-field select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.token-create-fields > .token-create-field input[type='color'],
+.panel > .token-create-field input[type='color'] {
+  height: 28px;
+  padding: 2px;
+}
+
+.token-create-name {
+  grid-column: 1 / -1;
+}
+
+.token-create-type,
+.token-create-art {
+  margin-bottom: 8px;
+}
+
+.token-create-fields > .token-create-art input[type='file'],
+.panel > .token-create-art input[type='file'] {
+  font-size: 0.75rem;
 }
 
 .tracker {

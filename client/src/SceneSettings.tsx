@@ -166,42 +166,53 @@ export function NewTokenForm({
   return (
     <section className="panel">
       <h2>New token</h2>
-      <div className="row first">
-        <input className="grow" placeholder="Name" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
-        <input type="color" aria-label="Colour" value={color} onChange={(e) => setColor(e.target.value)} />
-        <input
-          type="number"
-          aria-label="Max HP"
-          min={1}
-          max={9999}
-          value={maxHp}
-          onChange={(e) => setMaxHp(e.target.value)}
-          style={{ width: 60 }}
-        />
-        <input
-          type="number"
-          aria-label="Speed (ft)"
-          title="Speed in feet per turn"
-          min={0}
-          max={999}
-          value={speed}
-          onChange={(e) => setSpeed(e.target.value)}
-          style={{ width: 60 }}
-        />
+      <div className="token-create-fields">
+        <label className="token-create-field token-create-name">
+          <span>Name</span>
+          <input maxLength={40} value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="token-create-field">
+          <span>Colour</span>
+          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
+        </label>
+        <label className="token-create-field">
+          <span>Max HP</span>
+          <input
+            type="number"
+            min={1}
+            max={9999}
+            value={maxHp}
+            onChange={(e) => setMaxHp(e.target.value)}
+          />
+        </label>
+        <label className="token-create-field">
+          <span>Speed (ft)</span>
+          <input
+            type="number"
+            title="Speed in feet per turn"
+            min={0}
+            max={999}
+            value={speed}
+            onChange={(e) => setSpeed(e.target.value)}
+          />
+        </label>
       </div>
-      <label>
-        Token type
+      <label className="token-create-field token-create-type">
+        <span>Token type</span>
         <select value={String(isPlayer)} onChange={(e) => setIsPlayer(e.target.value === 'true')}>
           <option value="false">NPC / enemy (GM-controlled)</option>
           <option value="true">Player token</option>
         </select>
       </label>
-      <input
-        key={inputKey}
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/gif"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-      />
+      <label className="token-create-field token-create-art">
+        <span>Art (optional)</span>
+        <input
+          key={inputKey}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+      </label>
       <p className="hint">Art is optional; without it the token is a coloured disc.</p>
       <button
         disabled={busy || !valid}
