@@ -10,6 +10,7 @@ interface Props {
   placements: Placement[]
   onFocus: (tokenId: string) => void
   onSetInitiative: (tokenId: string, initiative: number) => void
+  onSetHealth: (token: Token, hp: number) => void
   onRemove: (tokenId: string) => void
   onStart: () => void
   onNext: () => void
@@ -94,15 +95,28 @@ export function InitiativeTracker(props: Props) {
                 <span className="hp">{entry.initiative}</span>
               )}
               {props.isGm || t.isPlayer ? (
-              <span className="hp tracker-health">{t.hp}/{t.maxHp}</span>
+                <input
+                  key={`h${t.hp}`}
+                  className="tracker-health-input"
+                  type="number"
+                  aria-label={`${t.name} HP`}
+                  min={0}
+                  max={t.maxHp}
+                  defaultValue={t.hp}
+                  onBlur={(e) => {
+                    const value = e.target.value
+                    const hp = Math.round(Number(value))
+                    if (value !== '' && Number.isFinite(hp) && hp >= 0 && hp <= t.maxHp && hp !== t.hp)
+                      props.onSetHealth(t, hp)
+                    else e.target.value = String(t.hp)
+                  }}
+                />
               ) : (
                 <span
-                className={`npc-health tracker-health ${healthCondition}`}
+                  className={`npc-health tracker-health ${healthCondition}`}
                   aria-label={`${t.name} health: ${healthCondition}`}
                   role="img"
-                >
-                  {healthCondition === 'green' ? '' : healthCondition}
-                </span>
+                />
               )}
               {props.isGm && (
                 <button

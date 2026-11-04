@@ -463,6 +463,19 @@ button.link {
   text-align: center;
 }
 
+.tracker-list .tracker-health-input {
+  grid-column: 4;
+  width: 48px;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: center;
+  background: #1f1b28;
+  color: inherit;
+  border: 1px solid #3a3347;
+  border-radius: 4px;
+  padding: 3px 4px;
+}
+
 .tracker .hp {
   font-size: 0.8rem;
   opacity: 0.8;
@@ -475,6 +488,12 @@ button.link {
   justify-self: center;
 }
 
+.tracker-health.npc-health {
+  width: 48px;
+  height: 23px;
+  box-sizing: border-box;
+}
+
 .tracker-list .icon-button {
   grid-column: 5;
   width: 24px;
@@ -484,27 +503,23 @@ button.link {
 }
 
 .npc-health {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: capitalize;
-  white-space: nowrap;
-}
-
-.npc-health.red {
-  color: #ff6b6b;
-}
-
-.npc-health.amber {
-  color: #f5c451;
-}
-
-.npc-health.green {
   display: inline-block;
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 2px;
-  background: #72d18b;
   vertical-align: middle;
+}
+
+.npc-health.red {
+  background: #ff6b6b;
+}
+
+.npc-health.amber {
+  background: #f5c451;
+}
+
+.npc-health.green {
+  background: #72d18b;
 }
 
 .tracker .moved {

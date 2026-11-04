@@ -719,6 +719,7 @@ export default function App() {
           placements={placements}
           onFocus={focusToken}
           onSetInitiative={(tokenId, n) => combatCall('SetInitiative', tokenId, n)}
+          onSetHealth={(token, hp) => saveToken(token, token.name, hp, token.speedFeet)}
           onRemove={(tokenId) => combatCall('RemoveInitiative', tokenId)}
           onStart={() => combatCall('StartCombat')}
           onNext={() => combatCall('NextTurn')}
@@ -803,8 +804,7 @@ export default function App() {
                 const t = tokenById.get(p.tokenId)
                 if (!t) return null
                 const healthCondition = getHealthCondition(t.hp, t.maxHp)
-                const healthLabel = `${healthCondition[0].toUpperCase()}${healthCondition.slice(1)}`
-                if (!isGm && !t.isPlayer && healthCondition === 'green')
+                if (!isGm && !t.isPlayer)
                   return (
                     <Group
                       key={`l${p.tokenId}`}
@@ -830,8 +830,8 @@ export default function App() {
                     y={p.y + scene.gridSize / 2 - 2}
                     width={scene.gridSize}
                     align="center"
-                    text={`${t.name} ${isGm || t.isPlayer ? `${t.hp}/${t.maxHp}` : healthLabel}`}
-                    fill={!isGm && !t.isPlayer ? getHealthColor(healthCondition) : '#e8e0d0'}
+                    text={`${t.name} ${t.hp}/${t.maxHp}`}
+                    fill="#e8e0d0"
                     fontSize={12}
                     shadowColor="black"
                     shadowBlur={4}
@@ -976,9 +976,7 @@ function TokenRow(props: {
           className={`npc-health ${healthCondition}`}
           aria-label={`${token.name} health: ${healthCondition}`}
           role="img"
-        >
-          {healthCondition === 'green' ? '' : healthCondition}
-        </span>
+        />
       )}
       <input
         key={`s${token.speedFeet}`}
