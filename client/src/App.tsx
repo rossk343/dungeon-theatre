@@ -905,8 +905,8 @@ export default function App() {
           />}
           {isGm && <NewTokenForm busy={uploading} onCreate={handleCreateToken} />}
           <section className="panel">
-            <h2>Tokens</h2>
-            {tokens.map((t) => (
+            <h2>{isGm ? 'Tokens' : 'Players'}</h2>
+            {tokens.filter((t) => isGm || t.isPlayer).map((t) => (
               <TokenRow
                 key={t.id}
                 token={t}
@@ -920,6 +920,7 @@ export default function App() {
                 onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
               />
             ))}
+            {!isGm && !tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
           </section>
         </aside>
       </main>
@@ -942,35 +943,60 @@ function TokenRow(props: {
   const canEdit = isGm || token.isPlayer
   const healthCondition = getHealthCondition(token.hp, token.maxHp)
   return (
-    <div className="token-row">
-      {token.imageUrl ? (
+    <div className={`token-row ${isGm ? 'gm-token-row' : 'player-token-row'}`}>
+      {canEdit ? (
+        <label className="token-art-trigger" title="Change token art">
+          {token.imageUrl ? (
+            <img className="swatch" src={token.imageUrl} alt="" style={{ borderColor: token.color }} />
+          ) : (
+            <span className="swatch" style={{ background: token.color }} />
+          )}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            aria-label={`Change ${token.name} art`}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) props.onArt(file)
+            }}
+          />
+        </label>
+      ) : token.imageUrl ? (
         <img className="swatch" src={token.imageUrl} alt="" style={{ borderColor: token.color }} />
       ) : (
         <span className="swatch" style={{ background: token.color }} />
       )}
       {/* Keyed on server values so remote updates reset the inputs. */}
-      <input
-        key={`n${token.name}`}
-        defaultValue={token.name}
-        maxLength={40}
-        aria-label={`${token.name} name`}
-        disabled={!canEdit}
-        onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
-      />
+      <label className="token-field token-name-field">
+        <span>Name</span>
+        <input
+          key={`n${token.name}`}
+          className="token-name-input"
+          defaultValue={token.name}
+          maxLength={40}
+          aria-label={`${token.name} name`}
+          disabled={!canEdit}
+          onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet)}
+        />
+      </label>
       {isGm || token.isPlayer ? (
-        <>
-          <input
-            key={`h${token.hp}`}
-            type="number"
-            min={0}
-            max={token.maxHp}
-            aria-label={`${token.name} HP`}
-            defaultValue={token.hp}
-            disabled={!canEdit}
-            onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
-          />
-          <span>/{token.maxHp}</span>
-        </>
+        <label className="token-field token-hp-field">
+          <span>HP</span>
+          <div className="token-stat token-hp">
+            <input
+              key={`h${token.hp}`}
+              type="number"
+              min={0}
+              max={token.maxHp}
+              aria-label={`${token.name} HP`}
+              defaultValue={token.hp}
+              disabled={!canEdit}
+              onBlur={(e) => props.onSave(token, token.name, Number(e.target.value) || 0, token.speedFeet)}
+            />
+            <span>/{token.maxHp}</span>
+          </div>
+        </label>
       ) : (
         <span
           className={`npc-health ${healthCondition}`}
@@ -978,22 +1004,27 @@ function TokenRow(props: {
           role="img"
         />
       )}
-      <input
-        key={`s${token.speedFeet}`}
-        type="number"
-        min={0}
-        max={999}
-        title="Speed (ft)"
-        aria-label={`${token.name} speed in feet`}
-        defaultValue={token.speedFeet}
-        disabled={!canEdit}
-        onBlur={(e) => {
-          const n = Math.round(Number(e.target.value))
-          if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n)
-          else e.target.value = String(token.speedFeet)
-        }}
-      />
-      <span>ft</span>
+      <label className="token-field token-speed-field">
+        <span>Speed</span>
+        <div className="token-stat token-speed">
+          <input
+            key={`s${token.speedFeet}`}
+            type="number"
+            min={0}
+            max={999}
+            title="Speed (ft)"
+            aria-label={`${token.name} speed in feet`}
+            defaultValue={token.speedFeet}
+            disabled={!canEdit}
+            onBlur={(e) => {
+              const n = Math.round(Number(e.target.value))
+              if (e.target.value !== '' && n >= 0 && n <= 999) props.onSave(token, token.name, token.hp, n)
+              else e.target.value = String(token.speedFeet)
+            }}
+          />
+          <span>ft</span>
+        </div>
+      </label>
       {isGm && (
         <select
           aria-label={`${token.name} token type`}
@@ -1005,20 +1036,6 @@ function TokenRow(props: {
         </select>
       )}
       {isGm && <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>}
-      {canEdit && (
-        <label className="icon-button" title="Set token art">
-          Art
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (file) props.onArt(file)
-            }}
-          />
-        </label>
-      )}
       {isGm && (
         <button className="danger icon-button" title="Delete token" aria-label={`Delete ${token.name}`} onClick={props.onDelete}>
           ✕
