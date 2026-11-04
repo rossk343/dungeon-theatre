@@ -1,6 +1,7 @@
 using DungeonTheatre.Api.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using System.Security.Cryptography;
 
 namespace DungeonTheatre.Api;
 
@@ -77,6 +78,26 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return result;
     }
 
+    public async Task<DiceRoll> RollDice(int sides, int count, int modifier)
+    {
+        if (sides is not (4 or 6 or 8 or 10 or 12 or 20 or 100) || count is < 1 or > 20 ||
+            modifier is < -999 or > 999)
+            throw new HubException("Choose a standard die, 1-20 dice, and a modifier between -999 and 999.");
+
+        var rolls = Enumerable.Range(0, count)
+            .Select(_ => RandomNumberGenerator.GetInt32(sides) + 1)
+            .ToArray();
+        var result = new DiceRoll(
+            Context.User?.Identity?.Name ?? "A player",
+            count,
+            sides,
+            modifier,
+            rolls,
+            rolls.Sum() + modifier);
+        await Clients.All.SendAsync("DiceRolled", result);
+        return result;
+    }
+
     public async Task<GameState> GetState()
     {
         var state = await store.GetStateAsync();
@@ -84,6 +105,8 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
             ? state
             : state with { Tokens = state.Tokens.Select(token => token.ForPlayerView()).ToList() };
     }
+
+    public record DiceRoll(string Roller, int Count, int Sides, int Modifier, IReadOnlyList<int> Rolls, int Total);
 
     public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {

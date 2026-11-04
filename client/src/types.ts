@@ -38,6 +38,15 @@ export interface Combat {
   turnStartY: number | null
 }
 
+export interface DiceRoll {
+  roller: string
+  count: number
+  sides: number
+  modifier: number
+  rolls: number[]
+  total: number
+}
+
 export interface MoveResult {
   placement: Placement
   accepted: boolean

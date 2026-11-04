@@ -13,7 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
-import type { Chapter, Combat, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
+import type { Chapter, Combat, DiceRoll, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -159,6 +159,7 @@ export default function App() {
   const [placements, setPlacements] = useState<Placement[]>([])
   const [dragPreview, setDragPreview] = useState<{ tokenId: string; x: number; y: number } | null>(null)
   const [combat, setCombat] = useState<Combat | null>(null)
+  const [lastDiceRoll, setLastDiceRoll] = useState<DiceRoll | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const [sceneId, setSceneId] = useState<string | null>(null)
@@ -308,6 +309,7 @@ export default function App() {
     conn.on('CombatUpdated', (c: Combat) => {
       if (c.sceneId === sceneRef.current) setCombat(c)
     })
+    conn.on('DiceRolled', (roll: DiceRoll) => setLastDiceRoll(roll))
     conn.on('TokenUpdated', applyToken)
     conn.on('TokenDeleted', (id: string) => {
       setTokens((prev) => prev.filter((t) => t.id !== id))
@@ -757,6 +759,12 @@ export default function App() {
           onNext={() => combatCall('NextTurn')}
           onEnd={() => combatCall('EndCombat')}
           onResetMovement={() => void resetMovement()}
+          lastDiceRoll={lastDiceRoll}
+          onRollDice={(sides, count, modifier) =>
+            void invoke<DiceRoll>('RollDice', sides, count, modifier).then((roll) => {
+              if (roll) setLastDiceRoll(roll)
+            })
+          }
         />
         <div className="viewport" ref={viewportRef}>
           {notice && (
