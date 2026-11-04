@@ -227,6 +227,9 @@ aside h2 {
   margin-bottom: 12px;
 }
 
+.panel > .new-scene-chapter {
+  margin-bottom: 8px;
+}
 .panel input:not([type='file']) {
   background: #1f1b28;
   color: inherit;

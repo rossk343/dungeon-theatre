@@ -253,7 +253,7 @@ export function NewSceneForm({
   return (
     <section className="panel">
       <h2>New scene</h2>
-      <select value={chapterId} aria-label="Chapter" disabled={chapters.length === 0} onChange={(e) => setChosen(e.target.value)}>
+      <select className="new-scene-chapter" value={chapterId} aria-label="Chapter" disabled={chapters.length === 0} onChange={(e) => setChosen(e.target.value)}>
         {chapters.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
