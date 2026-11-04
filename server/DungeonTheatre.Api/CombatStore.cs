@@ -12,6 +12,8 @@ public record Combat(
 // Combat is set when the move changed the movement used this turn.
 public record MoveResult(Placement Placement, bool Accepted, string? Reason, Combat? Combat);
 
+public record MovementResetResult(Placement Placement, Combat Combat);
+
 // Scoped: one DbContext per hub invocation.
 public class CombatStore(GameDbContext db)
 {
@@ -59,12 +61,16 @@ public class CombatStore(GameDbContext db)
         if (encounter is { Active: true })
         {
             if (entries.Count == 0)
+            {
                 (encounter.Active, encounter.CurrentTokenId, encounter.Round, encounter.MovedFeet) = (false, null, 0, 0);
+                (encounter.TurnStartX, encounter.TurnStartY) = (null, null);
+            }
             else if (encounter.CurrentTokenId == tokenId)
             {
                 if (index >= entries.Count) encounter.Round++;
                 encounter.CurrentTokenId = entries[index % entries.Count].TokenId;
                 encounter.MovedFeet = 0;
+                await SetTurnStartPositionAsync(encounter);
             }
         }
         await db.SaveChangesAsync();
@@ -92,6 +98,7 @@ public class CombatStore(GameDbContext db)
         {
             (encounter.Active, encounter.Round, encounter.CurrentTokenId, encounter.MovedFeet) =
                 (true, 1, entries[0].TokenId, 0);
+            await SetTurnStartPositionAsync(encounter);
             await db.SaveChangesAsync();
         }
         return await GetCombatAsync(sceneId);
@@ -102,6 +109,7 @@ public class CombatStore(GameDbContext db)
         var encounter = await db.Encounters.FindAsync(sceneId);
         if (encounter is null) return null;
         (encounter.Active, encounter.Round, encounter.CurrentTokenId, encounter.MovedFeet) = (false, 0, null, 0);
+        (encounter.TurnStartX, encounter.TurnStartY) = (null, null);
         await db.SaveChangesAsync();
         return await GetCombatAsync(sceneId);
     }
@@ -117,18 +125,40 @@ public class CombatStore(GameDbContext db)
         if (index >= 0 && index + 1 >= entries.Count) encounter.Round++;
         encounter.CurrentTokenId = entries[(index + 1) % entries.Count].TokenId;
         encounter.MovedFeet = 0;
+        await SetTurnStartPositionAsync(encounter);
         await db.SaveChangesAsync();
         return await GetCombatAsync(sceneId);
     }
 
-    // GM override: gives the current token its full movement back.
-    public async Task<Combat?> ResetMovementAsync(string sceneId)
+    // Resets the current token's position and movement to the start of its turn.
+    public async Task<MovementResetResult?> ResetMovementAsync(string sceneId)
     {
         var encounter = await db.Encounters.FindAsync(sceneId);
         if (encounter is not { Active: true }) return null;
+        var placement = await db.Placements.FindAsync(sceneId, encounter.CurrentTokenId);
+        if (placement is null) return null;
+        if (encounter.TurnStartX is not double startX || encounter.TurnStartY is not double startY)
+        {
+            startX = placement.X;
+            startY = placement.Y;
+            (encounter.TurnStartX, encounter.TurnStartY) = (startX, startY);
+        }
+        (placement.X, placement.Y) = (startX, startY);
         encounter.MovedFeet = 0;
         await db.SaveChangesAsync();
-        return await GetCombatAsync(sceneId);
+        return new MovementResetResult(ToDto(placement), await GetCombatAsync(sceneId));
+    }
+
+    private async Task SetTurnStartPositionAsync(EncounterEntity encounter)
+    {
+        var placement = encounter.CurrentTokenId is null
+            ? null
+            : await db.Placements.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.SceneId == encounter.SceneId && p.TokenId == encounter.CurrentTokenId);
+        if (placement is null)
+            (encounter.TurnStartX, encounter.TurnStartY) = (null, null);
+        else
+            (encounter.TurnStartX, encounter.TurnStartY) = (placement.X, placement.Y);
     }
 
     // Players move player tokens; in combat only the token whose turn it is.

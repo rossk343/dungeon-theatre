@@ -42,6 +42,11 @@ export interface MoveResult {
   combat: Combat | null
 }
 
+export interface MovementResetResult {
+  placement: Placement
+  combat: Combat
+}
+
 export interface Chapter {
   id: string
   name: string

@@ -57,6 +57,12 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<int>("Round")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double?>("TurnStartX")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("TurnStartY")
+                        .HasColumnType("REAL");
+
                     b.HasKey("SceneId");
 
                     b.ToTable("Encounters");

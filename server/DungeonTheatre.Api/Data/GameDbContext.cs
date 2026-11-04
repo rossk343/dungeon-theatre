@@ -60,6 +60,8 @@ public class EncounterEntity
     public string? CurrentTokenId { get; set; }
     // Feet the current token has already moved this turn.
     public int MovedFeet { get; set; }
+    public double? TurnStartX { get; set; }
+    public double? TurnStartY { get; set; }
 }
 
 public class InitiativeEntity

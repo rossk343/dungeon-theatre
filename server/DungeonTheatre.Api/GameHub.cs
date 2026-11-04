@@ -56,10 +56,16 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         await Publish(await combats.NextTurnAsync(sceneId));
     }
 
-    public async Task ResetMovement(string sceneId)
+    public async Task<MovementResetResult?> ResetMovement(string sceneId)
     {
-        RequireGm();
-        await Publish(await combats.ResetMovementAsync(sceneId));
+        if (!IsGm &&
+            (sceneId != await store.GetActiveSceneIdAsync() || !await combats.CurrentTurnIsPlayerAsync(sceneId)))
+            throw new HubException("Only the current player token can reset its movement.");
+        var result = await combats.ResetMovementAsync(sceneId);
+        if (result is null) return null;
+        await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementMoved", result.Placement);
+        await Publish(result.Combat);
+        return result;
     }
 
     public Task<GameState> GetState() => store.GetStateAsync();

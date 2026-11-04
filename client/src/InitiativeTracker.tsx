@@ -40,11 +40,13 @@ export function InitiativeTracker(props: Props) {
         {active ? (
           <>
             {props.canNext && <button onClick={props.onNext}>Next turn</button>}
+            {props.canNext && (
+              <button onClick={props.onResetMovement} title="Return the current token to the start of its turn and reset movement">
+                Reset move
+              </button>
+            )}
             {props.isGm && (
               <>
-                <button onClick={props.onResetMovement} title="Give the current token its full movement back">
-                  Reset move
-                </button>
                 <button className="danger" onClick={props.onEnd}>
                   End
                 </button>

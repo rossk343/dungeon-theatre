@@ -13,7 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
-import type { Chapter, Combat, GameState, GridPreview, MoveResult, Placement, Scene, Session, Token } from './types'
+import type { Chapter, Combat, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -622,6 +622,17 @@ export default function App() {
     void invoke('UpdateToken', t.id, name, hp, speedFeet)
   }
 
+  const resetMovement = async () => {
+    const result = await invoke<MovementResetResult>('ResetMovement', sceneId)
+    if (!result) return
+    setPlacements((prev) =>
+      prev.map((placement) =>
+        placement.tokenId === result.placement.tokenId ? result.placement : placement,
+      ),
+    )
+    setCombat(result.combat)
+  }
+
   const changeTokenKind = async (tokenId: string, isPlayer: boolean) => {
     const token = await invoke<Token | null>('SetTokenKind', tokenId, isPlayer)
     if (token) applyToken(token)
@@ -724,7 +735,7 @@ export default function App() {
           onStart={() => combatCall('StartCombat')}
           onNext={() => combatCall('NextTurn')}
           onEnd={() => combatCall('EndCombat')}
-          onResetMovement={() => combatCall('ResetMovement')}
+          onResetMovement={() => void resetMovement()}
         />
         <div className="viewport" ref={viewportRef}>
           {notice && (

@@ -48,7 +48,7 @@ Tokens are a game-wide library; scenes only store placements. From the sidebar y
 
 The panel on the left is the initiative tracker for the current scene. Add placed tokens with an initiative (leave it blank to roll a d20), edit values inline, then **Start combat**. Order is highest initiative first; **Next turn** advances and increments the round when it wraps. Click a name to zoom the map to that token.
 
-Each token has a speed in feet (default 30, editable in the Tokens list). During combat only the token whose turn it is is metered: every square, diagonals included, costs the scene's feet per square (5 by default), and a drag that would exceed the remaining movement is rejected and the token snaps back. **Reset move** gives the current token its movement back. The GM can move any token; players can move any player token, but during combat only when that token has the current turn.
+Each token has a speed in feet (default 30, editable in the Tokens list). During combat only the token whose turn it is is metered: every square, diagonals included, costs the scene's feet per square (5 by default), and a drag that would exceed the remaining movement is rejected and the token snaps back. **Reset move** returns the current token to its position at the start of its turn and restores its movement; the GM can do this for any turn, and players can do it on a player token's turn. The GM can move any token; players can move any player token, but during combat only when that token has the current turn.
 
 ## Accounts and roles
 
