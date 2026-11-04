@@ -20,6 +20,21 @@ const MAX_ZOOM = 4
 
 type View = { x: number; y: number; scale: number }
 
+const VIEWS_KEY = 'sceneViews'
+
+// Views survive reloads; anything malformed is dropped.
+function loadViews(): Record<string, View> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? '{}')
+    if (!raw || typeof raw !== 'object') return {}
+    const ok = (v: unknown): v is View =>
+      !!v && typeof v === 'object' && ['x', 'y', 'scale'].every((k) => Number.isFinite((v as Record<string, unknown>)[k]))
+    return Object.fromEntries(Object.entries(raw).filter(([, v]) => ok(v)))
+  } catch {
+    return {}
+  }
+}
+
 function fitToViewport(scene: Scene, viewport: { width: number; height: number }): View {
   const scale = Math.min(1, viewport.width / scene.width, viewport.height / scene.height)
   return {
@@ -86,11 +101,16 @@ export default function App() {
     savedScene && preview?.sceneId === savedScene.id ? { ...savedScene, ...preview } : savedScene
   const viewportRef = useRef<HTMLDivElement>(null)
   const [viewport, setViewport] = useState({ width: 800, height: 600 })
-  const [viewState, setViewState] = useState<{ key: string; view: View } | null>(null)
+  const [views, setViews] = useState<Record<string, View>>(loadViews)
   const viewKey = scene ? `${scene.id}:${scene.imageUrl ?? ''}` : ''
   const fitView = scene ? fitToViewport(scene, viewport) : { x: 0, y: 0, scale: 1 }
-  // The saved view only applies to the scene (and image) it was made for; otherwise show the whole map.
-  const view = viewState?.key === viewKey ? viewState.view : fitView
+  // Each scene (and image) remembers its own view; one never visited shows the whole map.
+  const view = views[viewKey] ?? fitView
+  const setView = (v: View) => setViews((prev) => ({ ...prev, [viewKey]: v }))
+
+  useEffect(() => {
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(views))
+  }, [views])
 
   useEffect(() => {
     const el = viewportRef.current
@@ -105,10 +125,7 @@ export default function App() {
   const zoomAt = (px: number, py: number, factor: number) => {
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * factor))
     const k = scale / view.scale
-    setViewState({
-      key: viewKey,
-      view: { scale, x: px - (px - view.x) * k, y: py - (py - view.y) * k },
-    })
+    setView({ scale, x: px - (px - view.x) * k, y: py - (py - view.y) * k })
   }
 
   const joinScene = useCallback(async (id: string) => {
@@ -332,10 +349,7 @@ export default function App() {
     const p = placements.find((x) => x.tokenId === tokenId)
     if (!p || !scene) return
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, viewport.height / (scene.gridSize * 8)))
-    setViewState({
-      key: viewKey,
-      view: { scale, x: viewport.width / 2 - p.x * scale, y: viewport.height / 2 - p.y * scale },
-    })
+    setView({ scale, x: viewport.width / 2 - p.x * scale, y: viewport.height / 2 - p.y * scale })
   }
 
   const combatCall = (method: string, ...args: unknown[]) => void invoke(method, sceneId, ...args)
@@ -416,7 +430,7 @@ export default function App() {
             onDragEnd={(e) => {
               // Token drags bubble up here; only react to the stage itself being panned.
               if (e.target !== e.target.getStage()) return
-              setViewState({ key: viewKey, view: { ...view, x: e.target.x(), y: e.target.y() } })
+              setView({ ...view, x: e.target.x(), y: e.target.y() })
             }}
           >
             <Layer listening={false}>
@@ -476,7 +490,12 @@ export default function App() {
             <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.25)} aria-label="Zoom out">−</button>
             <span>{Math.round(view.scale * 100)}%</span>
             <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1.25)} aria-label="Zoom in">+</button>
-            <button onClick={() => setViewState(null)}>Fit</button>
+            <button onClick={() =>
+                setViews((prev) => {
+                  const { [viewKey]: _, ...rest } = prev
+                  return rest
+                })
+              }>Fit</button>
           </div>
           </>
         )}
