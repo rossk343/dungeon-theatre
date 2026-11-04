@@ -33,6 +33,8 @@ export interface Combat {
   currentTokenId: string | null
   movedFeet: number
   entries: InitiativeEntry[]
+  turnStartX: number | null
+  turnStartY: number | null
 }
 
 export interface MoveResult {

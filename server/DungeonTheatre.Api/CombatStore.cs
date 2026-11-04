@@ -7,7 +7,8 @@ public record InitiativeEntry(string TokenId, int Initiative);
 
 // Entries are already in turn order (highest initiative first).
 public record Combat(
-    string SceneId, bool Active, int Round, string? CurrentTokenId, int MovedFeet, IReadOnlyList<InitiativeEntry> Entries);
+    string SceneId, bool Active, int Round, string? CurrentTokenId, int MovedFeet, IReadOnlyList<InitiativeEntry> Entries,
+    double? TurnStartX, double? TurnStartY);
 
 // Combat is set when the move changed the movement used this turn.
 public record MoveResult(Placement Placement, bool Accepted, string? Reason, Combat? Combat);
@@ -29,7 +30,8 @@ public class CombatStore(GameDbContext db)
         var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
         var entries = Ordered(await db.Initiative.AsNoTracking().Where(i => i.SceneId == sceneId).ToListAsync());
         return new Combat(sceneId, encounter?.Active ?? false, encounter?.Round ?? 0, encounter?.CurrentTokenId,
-            encounter?.MovedFeet ?? 0, entries.Select(i => new InitiativeEntry(i.TokenId, i.Initiative)).ToList());
+            encounter?.MovedFeet ?? 0, entries.Select(i => new InitiativeEntry(i.TokenId, i.Initiative)).ToList(),
+            encounter?.TurnStartX, encounter?.TurnStartY);
     }
 
     // Only tokens that are on the scene can be in its initiative order.

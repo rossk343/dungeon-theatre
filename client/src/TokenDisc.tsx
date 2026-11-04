@@ -9,6 +9,7 @@ interface TokenDiscProps {
   y: number
   radius: number
   active?: boolean
+  opacity?: number
   draggable: boolean
   onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => void
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void
@@ -33,9 +34,28 @@ function Art({ url, radius }: { url: string; radius: number }) {
   )
 }
 
-export function TokenDisc({ token, x, y, radius, active, draggable, onDragMove, onDragEnd }: TokenDiscProps) {
+export function TokenDisc({
+  token, x, y, radius, active, opacity = 1, draggable, onDragMove, onDragEnd,
+}: TokenDiscProps) {
   return (
-    <Group x={x} y={y} draggable={draggable} onDragMove={onDragMove} onDragEnd={onDragEnd}>
+    <Group
+      x={x}
+      y={y}
+      opacity={opacity}
+      draggable={draggable}
+      onMouseEnter={(e) => {
+        if (draggable) e.target.getStage()?.container().style.setProperty('cursor', 'move')
+      }}
+      onMouseLeave={(e) => {
+        if (draggable) e.target.getStage()?.container().style.setProperty('cursor', 'grab')
+      }}
+      onDragStart={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'grabbing')}
+      onDragMove={onDragMove}
+      onDragEnd={(e) => {
+        e.target.getStage()?.container().style.setProperty('cursor', draggable ? 'move' : 'grab')
+        onDragEnd(e)
+      }}
+    >
       <Circle radius={radius} fill={token.color} />
       {token.imageUrl && <Art url={token.imageUrl} radius={radius} />}
       <Circle radius={radius} stroke="#e8e0d0" strokeWidth={2} />

@@ -157,6 +157,7 @@ export default function App() {
   const [gameName, setGameName] = useState('')
   const [tokens, setTokens] = useState<Token[]>([])
   const [placements, setPlacements] = useState<Placement[]>([])
+  const [dragPreview, setDragPreview] = useState<{ tokenId: string; x: number; y: number } | null>(null)
   const [combat, setCombat] = useState<Combat | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
@@ -676,6 +677,24 @@ export default function App() {
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
   const placed = new Set(placements.map((p) => p.tokenId))
+  const turnStartToken = combat?.active && combat.currentTokenId
+    ? tokenById.get(combat.currentTokenId)
+    : undefined
+  const turnStartPlacement = combat?.active && combat.currentTokenId
+    ? placements.find((p) => p.tokenId === combat.currentTokenId)
+    : undefined
+  const currentTurnPosition =
+    dragPreview?.tokenId === combat?.currentTokenId
+      ? dragPreview
+      : turnStartPlacement
+  const turnStartX = combat?.active ? combat.turnStartX : null
+  const turnStartY = combat?.active ? combat.turnStartY : null
+  const showTurnStartMarker =
+    !!turnStartToken &&
+    !!currentTurnPosition &&
+    typeof turnStartX === 'number' &&
+    typeof turnStartY === 'number' &&
+    (currentTurnPosition.x !== turnStartX || currentTurnPosition.y !== turnStartY)
 
   if (authLoading) {
     return <main className="auth-shell"><p>Entering the campaign hall…</p></main>
@@ -780,6 +799,20 @@ export default function App() {
               <GridLines scene={scene} />
             </Layer>
             <Layer>
+              {showTurnStartMarker && turnStartToken &&
+                typeof turnStartX === 'number' && typeof turnStartY === 'number' && (
+                <TokenDisc
+                  key={`turn-start-${turnStartToken.id}`}
+                  token={turnStartToken}
+                  x={turnStartX}
+                  y={turnStartY}
+                  radius={scene.gridSize / 2 - 4}
+                  opacity={0.3}
+                  draggable={false}
+                  onDragMove={() => {}}
+                  onDragEnd={() => {}}
+                />
+              )}
               {placements.map((p) => {
                 const t = tokenById.get(p.tokenId)
                 if (!t) return null
@@ -798,6 +831,7 @@ export default function App() {
                         (!combat?.active || combat.currentTokenId === p.tokenId))
                     }
                     onDragMove={(e) => {
+                      setDragPreview({ tokenId: p.tokenId, x: e.target.x(), y: e.target.y() })
                       const now = performance.now()
                       if (now - lastSent.current < SEND_INTERVAL_MS) return
                       lastSent.current = now
@@ -807,6 +841,7 @@ export default function App() {
                       const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX)
                       const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY)
                       e.target.position({ x, y })
+                      setDragPreview(null)
                       void commitMove(p.tokenId, x, y, e.target)
                     }}
                   />
