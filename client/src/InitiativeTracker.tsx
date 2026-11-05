@@ -30,6 +30,7 @@ const rollD20 = () => Math.floor(Math.random() * 20) + 1
 export function InitiativeTracker(props: Props) {
   const { combat, tokens, placements } = props
   const [pick, setPick] = useState('')
+  const [tab, setTab] = useState<'initiative' | 'actions'>('initiative')
   const [value, setValue] = useState('')
   const [diceRows, setDiceRows] = useState<(DiceGroup & { id: number })[]>([{ id: 0, count: 1, sides: 20 }])
   const nextRowId = useRef(1)
@@ -46,7 +47,15 @@ export function InitiativeTracker(props: Props) {
   const active = combat?.active ?? false
 
   return (
-    <div className="initiative-column">
+    <div className="initiative-column" data-tab={tab}>
+    <div className="tracker-tabs" role="tablist" aria-label="Combat panels">
+      <button role="tab" aria-selected={tab === 'initiative'} className={tab === 'initiative' ? 'active' : undefined} onClick={() => setTab('initiative')}>
+        Initiative
+      </button>
+      <button role="tab" aria-selected={tab === 'actions'} className={tab === 'actions' ? 'active' : undefined} onClick={() => setTab('actions')}>
+        Actions
+      </button>
+    </div>
     <section className={`tracker${active ? ' combat-on' : ''}`} aria-label="Initiative">
       <h2>
         {active ? `Round ${combat?.round}` : 'Initiative'}

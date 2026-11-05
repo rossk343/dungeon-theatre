@@ -1223,7 +1223,34 @@ button.link {
   touch-action: none;
 }
 
+.tracker-tabs {
+  display: none;
+}
+
 @media (max-width: 700px) {
+  .tracker-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+
+  .tracker-tabs button.active {
+    border-color: #8a659d;
+  }
+
+  .initiative-column[data-tab='initiative'] .tracker-actions-panel,
+  .initiative-column[data-tab='actions'] .tracker {
+    display: none;
+  }
+
+  .initiative-column {
+    gap: 8px;
+  }
+
+  .tracker {
+    flex: 0 1 auto;
+  }
+
   .app {
     padding: 8px;
   }

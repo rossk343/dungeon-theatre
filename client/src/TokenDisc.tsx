@@ -58,6 +58,7 @@ export function TokenDisc({
       onClick={(e) => {
         if (e.evt.button === 0) onSelect?.()
       }}
+      onTap={() => onSelect?.()}
       onMouseEnter={(e) => {
         if (onSelect) e.target.getStage()?.container().style.setProperty('cursor', SWORD_CURSOR)
         else if (draggable) e.target.getStage()?.container().style.setProperty('cursor', 'move')
