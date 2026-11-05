@@ -63,6 +63,8 @@ public class EncounterEntity
     public string? CurrentTokenId { get; set; }
     // Feet the current token has already moved this turn.
     public int MovedFeet { get; set; }
+    // The current token spent its action dashing: double movement, no attacking.
+    public bool Dashed { get; set; }
     public double? TurnStartX { get; set; }
     public double? TurnStartY { get; set; }
 }

@@ -214,6 +214,8 @@ export default function App() {
   const [combat, setCombat] = useState<Combat | null>(null)
   const [lastDiceRoll, setLastDiceRoll] = useState<DiceRoll | null>(null)
   const [attackTargetId, setAttackTargetId] = useState<string | null>(null)
+  // Set after this player's successful attack, to offer a damage roll for that turn and target.
+  const [damageKey, setDamageKey] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const [sceneId, setSceneId] = useState<string | null>(null)
@@ -915,7 +917,7 @@ export default function App() {
     combat?.active === true && tokenById.get(combat.currentTokenId ?? '')?.isPlayer === true
   const attackTargetToken = attackTargetId ? tokenById.get(attackTargetId) : undefined
   const attackTarget =
-    canAttack && attackTargetToken && combat?.entries.some((entry) => entry.tokenId === attackTargetToken.id)
+    canAttack && !combat?.dashed && attackTargetToken && combat?.entries.some((entry) => entry.tokenId === attackTargetToken.id)
       ? attackTargetToken
       : null
   const sceneWalls = scene?.walls
@@ -1000,13 +1002,19 @@ export default function App() {
           onEnd={() => combatCall('EndCombat')}
           onResetMovement={() => void resetMovement()}
           lastDiceRoll={lastDiceRoll}
+          canDash={canAttack}
+          onDash={() => combatCall('Dash')}
           attackTarget={attackTarget}
+          canRollDamage={!!attackTarget && damageKey === `${combat?.currentTokenId}:${combat?.round}:${attackTarget.id}`}
           onClearTarget={() => setAttackTargetId(null)}
-          onRollDice={(groups, modifier) =>
-            void invoke<DiceRoll>('RollDice', groups, modifier, sceneId, attackTarget?.id ?? null).then((roll) => {
-              if (roll) setLastDiceRoll(roll)
+          onRollDice={(groups, modifier, damage) => {
+            const key = attackTarget ? `${combat?.currentTokenId}:${combat?.round}:${attackTarget.id}` : null
+            void invoke<DiceRoll>('RollDice', groups, modifier, sceneId, attackTarget?.id ?? null, damage).then((roll) => {
+              if (!roll) return
+              setLastDiceRoll(roll)
+              setDamageKey(roll.hit === true ? key : null)
             })
-          }
+          }}
         />
         <div className="viewport" ref={viewportRef}>
           {notice && (
@@ -1169,7 +1177,7 @@ export default function App() {
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     targeted={attackTarget?.id === p.tokenId}
                     onSelect={
-                      canAttack && !t.isPlayer && combat?.entries.some((entry) => entry.tokenId === t.id) &&
+                      canAttack && !combat?.dashed && !t.isPlayer && combat?.entries.some((entry) => entry.tokenId === t.id) &&
                       !fogDrawing && !wallDrawing && !measureActive
                         ? () => setAttackTargetId((current) => (current === t.id ? null : t.id))
                         : undefined

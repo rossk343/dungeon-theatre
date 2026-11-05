@@ -286,6 +286,15 @@ public class GameStore(GameDbContext db)
         return ToDto(entity);
     }
 
+    public async Task<Token?> ApplyDamageAsync(string tokenId, int amount)
+    {
+        var entity = await db.Tokens.FindAsync(tokenId);
+        if (entity is null) return null;
+        entity.Hp = Math.Clamp(entity.Hp - Math.Max(0, amount), 0, entity.MaxHp);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
     public async Task<Token?> UpdateTokenLightingAsync(string tokenId, int visionFeet, int lightFeet)
     {
         if (!IsValidLightRange(visionFeet) || !IsValidLightRange(lightFeet)) return null;

@@ -17,8 +17,11 @@ interface Props {
   onEnd: () => void
   onResetMovement: () => void
   lastDiceRoll: DiceRoll | null
-  onRollDice: (groups: DiceGroup[], modifier: number) => void
+  onRollDice: (groups: DiceGroup[], modifier: number, damage: boolean) => void
   attackTarget: Token | null
+  canRollDamage: boolean
+  canDash: boolean
+  onDash: () => void
   onClearTarget: () => void
 }
 
@@ -151,7 +154,7 @@ export function InitiativeTracker(props: Props) {
               )}
               {current && (
                 <span className="moved">
-                  Moved {combat?.movedFeet}/{t.speedFeet} ft
+                  Moved {combat?.movedFeet}/{t.speedFeet * (combat?.dashed ? 2 : 1)} ft{combat?.dashed ? ' (dash)' : ''}
                 </span>
               )}
             </li>
@@ -190,6 +193,16 @@ export function InitiativeTracker(props: Props) {
     </section>
     <section className="tracker-actions-panel" aria-label="Actions">
         <h3>Actions</h3>
+        {props.canDash && (
+          <button
+            className="dice-add"
+            disabled={combat?.dashed === true}
+            title="Double your movement this turn. You can't attack after dashing."
+            onClick={props.onDash}
+          >
+            {combat?.dashed ? 'Dashing (no attacks)' : 'Dash'}
+          </button>
+        )}
         {diceRows.map((row, index) => (
           <div className="dice-row" key={row.id}>
             <label>
@@ -254,17 +267,26 @@ export function InitiativeTracker(props: Props) {
               onChange={(e) => setDiceModifier(Math.min(999, Math.max(-999, Number(e.target.value) || 0)))}
             />
           </label>
-          <button className="roll-button" onClick={() => props.onRollDice(diceRows.map(({ count, sides }) => ({ count, sides })), diceModifier)}>
+          <button className="roll-button" onClick={() => props.onRollDice(diceRows.map(({ count, sides }) => ({ count, sides })), diceModifier, false)}>
             {props.attackTarget ? 'Attack' : 'Roll'}
           </button>
         </div>
+        {props.canRollDamage && props.attackTarget && (
+          <button
+            className="damage-button"
+            title="Set the dice and modifier above for your weapon, then roll"
+            onClick={() => props.onRollDice(diceRows.map(({ count, sides }) => ({ count, sides })), diceModifier, true)}
+          >
+            Roll damage to {props.attackTarget.name}
+          </button>
+        )}
         {props.lastDiceRoll && (
           <p
             className={`dice-result${props.lastDiceRoll.hit === null ? '' : props.lastDiceRoll.hit ? ' hit' : ' miss'}`}
             role="status"
             aria-live="polite"
           >
-            <strong>{props.lastDiceRoll.roller}</strong> rolled{' '}
+            <strong>{props.lastDiceRoll.roller}</strong> rolled{props.lastDiceRoll.damage ? ' damage' : ''}{' '}
             {props.lastDiceRoll.groups.map((g) => `${g.count}d${g.sides}`).join(' + ')}
             {props.lastDiceRoll.modifier > 0 ? ` + ${props.lastDiceRoll.modifier}` : ''}
             {props.lastDiceRoll.modifier < 0 ? ` - ${Math.abs(props.lastDiceRoll.modifier)}` : ''}
@@ -272,7 +294,10 @@ export function InitiativeTracker(props: Props) {
             <strong>{props.lastDiceRoll.total}</strong>
             {props.lastDiceRoll.target && (
               <>
-                {' '}against <strong>{props.lastDiceRoll.target}</strong> — <strong className="attack-outcome">{props.lastDiceRoll.hit ? 'Hit!' : 'Miss'}</strong>
+                {' '}{props.lastDiceRoll.damage ? 'to' : 'against'} <strong>{props.lastDiceRoll.target}</strong>
+                {!props.lastDiceRoll.damage && (
+                  <> — <strong className="attack-outcome">{props.lastDiceRoll.hit ? 'Hit!' : 'Miss'}</strong></>
+                )}
               </>
             )}
           </p>

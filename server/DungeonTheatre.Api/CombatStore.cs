@@ -9,7 +9,7 @@ public record InitiativeEntry(string TokenId, int Initiative);
 // Entries are already in turn order (highest initiative first).
 public record Combat(
     string SceneId, bool Active, int Round, string? CurrentTokenId, int MovedFeet, IReadOnlyList<InitiativeEntry> Entries,
-    double? TurnStartX, double? TurnStartY);
+    double? TurnStartX, double? TurnStartY, bool Dashed);
 
 // Combat is set when the move changed the movement used this turn.
 public record MoveResult(Placement Placement, bool Accepted, string? Reason, Combat? Combat);
@@ -32,7 +32,7 @@ public class CombatStore(GameDbContext db)
         var entries = Ordered(await db.Initiative.AsNoTracking().Where(i => i.SceneId == sceneId).ToListAsync());
         return new Combat(sceneId, encounter?.Active ?? false, encounter?.Round ?? 0, encounter?.CurrentTokenId,
             encounter?.MovedFeet ?? 0, entries.Select(i => new InitiativeEntry(i.TokenId, i.Initiative)).ToList(),
-            encounter?.TurnStartX, encounter?.TurnStartY);
+            encounter?.TurnStartX, encounter?.TurnStartY, encounter?.Dashed ?? false);
     }
 
     // Only tokens that are on the scene can be in its initiative order.
@@ -66,13 +66,14 @@ public class CombatStore(GameDbContext db)
             if (entries.Count == 0)
             {
                 (encounter.Active, encounter.CurrentTokenId, encounter.Round, encounter.MovedFeet) = (false, null, 0, 0);
-                (encounter.TurnStartX, encounter.TurnStartY) = (null, null);
+                (encounter.TurnStartX, encounter.TurnStartY, encounter.Dashed) = (null, null, false);
             }
             else if (encounter.CurrentTokenId == tokenId)
             {
                 if (index >= entries.Count) encounter.Round++;
                 encounter.CurrentTokenId = entries[index % entries.Count].TokenId;
                 encounter.MovedFeet = 0;
+                encounter.Dashed = false;
                 await SetTurnStartPositionAsync(encounter);
             }
         }
@@ -101,6 +102,7 @@ public class CombatStore(GameDbContext db)
         {
             (encounter.Active, encounter.Round, encounter.CurrentTokenId, encounter.MovedFeet) =
                 (true, 1, entries[0].TokenId, 0);
+            encounter.Dashed = false;
             await SetTurnStartPositionAsync(encounter);
             await db.SaveChangesAsync();
         }
@@ -112,7 +114,7 @@ public class CombatStore(GameDbContext db)
         var encounter = await db.Encounters.FindAsync(sceneId);
         if (encounter is null) return null;
         (encounter.Active, encounter.Round, encounter.CurrentTokenId, encounter.MovedFeet) = (false, 0, null, 0);
-        (encounter.TurnStartX, encounter.TurnStartY) = (null, null);
+        (encounter.TurnStartX, encounter.TurnStartY, encounter.Dashed) = (null, null, false);
         await db.SaveChangesAsync();
         return await GetCombatAsync(sceneId);
     }
@@ -128,10 +130,24 @@ public class CombatStore(GameDbContext db)
         if (index >= 0 && index + 1 >= entries.Count) encounter.Round++;
         encounter.CurrentTokenId = entries[(index + 1) % entries.Count].TokenId;
         encounter.MovedFeet = 0;
+        encounter.Dashed = false;
         await SetTurnStartPositionAsync(encounter);
         await db.SaveChangesAsync();
         return await GetCombatAsync(sceneId);
     }
+
+    // Dashing spends the turn's action, so it is refused once the token has dashed; attacks check Dashed too.
+    public async Task<Combat?> DashAsync(string sceneId)
+    {
+        var encounter = await db.Encounters.FindAsync(sceneId);
+        if (encounter is not { Active: true } || encounter.CurrentTokenId is null) return null;
+        encounter.Dashed = true;
+        await db.SaveChangesAsync();
+        return await GetCombatAsync(sceneId);
+    }
+
+    public async Task<bool> CurrentTurnDashedAsync(string sceneId) =>
+        await db.Encounters.AsNoTracking().AnyAsync(e => e.SceneId == sceneId && e.Active && e.Dashed);
 
     // Resets the current token's position and movement to the start of its turn.
     public async Task<MovementResetResult?> ResetMovementAsync(string sceneId)
@@ -170,6 +186,13 @@ public class CombatStore(GameDbContext db)
         if (!await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == tokenId && t.IsPlayer)) return false;
         var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
         return encounter is not { Active: true } || encounter.CurrentTokenId == tokenId;
+    }
+
+    // Identifies one attacker's turn so a damage roll can only follow a hit made on that turn.
+    public async Task<string?> GetTurnKeyAsync(string sceneId)
+    {
+        var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
+        return encounter is { Active: true } ? $"{sceneId}:{encounter.Round}:{encounter.CurrentTokenId}" : null;
     }
 
     // An NPC in the scene's initiative order that can be attacked.
@@ -221,7 +244,7 @@ public class CombatStore(GameDbContext db)
             var speed = await db.Tokens.AsNoTracking().Where(t => t.Id == tokenId).Select(t => t.SpeedFeet).FirstAsync();
             var squares = Math.Round(Math.Max(Math.Abs(x - placement.X), Math.Abs(y - placement.Y)) / scene.GridSize);
             var feet = squares * scene.FeetPerSquare;
-            var left = Math.Max(0, speed - encounter!.MovedFeet);
+            var left = Math.Max(0, speed * (encounter!.Dashed ? 2 : 1) - encounter.MovedFeet);
             if (feet > left)
                 return new MoveResult(ToDto(placement), false,
                     $"Not enough movement: that move costs {feet:0} ft and only {left} ft is left.", null);

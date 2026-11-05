@@ -835,6 +835,17 @@ button.danger {
   color: #e07a7a;
 }
 
+.damage-button {
+  grid-column: 1 / -1;
+  background: #6b2f2f;
+  border-color: #9a4a4a;
+  font-weight: 600;
+}
+
+.damage-button:hover {
+  background: #823737;
+}
+
 .attack-target {
   grid-column: 1 / -1;
   display: flex;

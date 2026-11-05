@@ -66,6 +66,16 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         await Publish(await combats.NextTurnAsync(sceneId));
     }
 
+    public async Task<Combat?> Dash(string sceneId)
+    {
+        if (!IsGm &&
+            (sceneId != await store.GetActiveSceneIdAsync() || !await combats.CurrentTurnIsPlayerAsync(sceneId)))
+            throw new HubException("Only the current player token can dash.");
+        var combat = await combats.DashAsync(sceneId);
+        await Publish(combat);
+        return combat;
+    }
+
     public async Task<MovementResetResult?> ResetMovement(string sceneId)
     {
         if (!IsGm &&
@@ -79,8 +89,10 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     }
 
     // Optionally compares the total to an NPC's AC; the AC itself is never sent to clients.
+    // With damage set, the roll is reported as damage against the target and no AC check is made.
     public async Task<DiceRoll> RollDice(
-        IReadOnlyList<DiceGroupRequest>? groups, int modifier, string? sceneId = null, string? targetTokenId = null)
+        IReadOnlyList<DiceGroupRequest>? groups, int modifier, string? sceneId = null, string? targetTokenId = null,
+        bool damage = false)
     {
         if (groups is null || groups.Count is < 1 or > 10 || modifier is < -999 or > 999 ||
             groups.Any(g => g is null || g.Sides is not (4 or 6 or 8 or 10 or 12 or 20 or 100) || g.Count is < 1 or > 20))
@@ -94,6 +106,8 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
                 throw new HubException("You can only attack in the active scene.");
             if (!IsGm && !await combats.CurrentTurnIsPlayerAsync(sceneId))
                 throw new HubException("You can only attack on a player's turn.");
+            if (await combats.CurrentTurnDashedAsync(sceneId))
+                throw new HubException("You dashed this turn, so you can't attack.");
             target = await combats.GetAttackTargetAsync(sceneId, targetTokenId)
                 ?? throw new HubException("Choose an NPC in the initiative order to attack.");
         }
@@ -105,15 +119,50 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
                 Enumerable.Range(0, g.Count).Select(_ => RandomNumberGenerator.GetInt32(g.Sides) + 1).ToArray()))
             .ToList();
         var total = rolled.Sum(g => g.Rolls.Sum()) + modifier;
+        var isDamage = damage && target is not null;
+        var hit = target is null || isDamage ? (bool?)null : total >= target.ArmorClass;
+        if (target is not null)
+        {
+            var turnKey = await combats.GetTurnKeyAsync(sceneId!) + ":" + target.Id;
+            if (isDamage)
+            {
+                if (!IsGm && Context.Items["lastHit"] as string != turnKey)
+                    throw new HubException("Roll damage right after a successful attack on this target.");
+                Context.Items.Remove("lastHit");
+            }
+            else if (hit == true) Context.Items["lastHit"] = turnKey;
+            else Context.Items.Remove("lastHit");
+        }
+
         var result = new DiceRoll(
             Context.User?.Identity?.Name ?? "A player",
             rolled,
             modifier,
             total,
             target?.Name,
-            target is null ? null : total >= target.ArmorClass);
+            hit,
+            isDamage);
         await Clients.All.SendAsync("DiceRolled", result);
+
+        if (isDamage && target is not null)
+        {
+            var updated = await store.ApplyDamageAsync(target.Id, total);
+            if (updated is not null)
+            {
+                await Clients.Group(GmGroup).SendAsync("TokenUpdated", updated);
+                await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", updated.ForPlayerView());
+                await RemoveDefeatedNpcFromInitiativeAsync(updated);
+            }
+        }
         return result;
+    }
+
+    // A defeated NPC (0 HP) drops out of every scene's initiative order.
+    private async Task RemoveDefeatedNpcFromInitiativeAsync(Token token)
+    {
+        if (token.IsPlayer || token.Hp > 0) return;
+        foreach (var combat in await combats.RemoveTokenFromAllAsync(token.Id))
+            await Publish(combat);
     }
 
     public async Task<GameState> GetState()
@@ -127,7 +176,8 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     public record DiceGroupRequest(int Count, int Sides);
     public record DiceGroupResult(int Count, int Sides, IReadOnlyList<int> Rolls);
     public record DiceRoll(
-        string Roller, IReadOnlyList<DiceGroupResult> Groups, int Modifier, int Total, string? Target, bool? Hit);
+        string Roller, IReadOnlyList<DiceGroupResult> Groups, int Modifier, int Total, string? Target, bool? Hit,
+        bool Damage);
 
     public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {
@@ -274,6 +324,7 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         {
             await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);
             await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", token.ForPlayerView());
+            await RemoveDefeatedNpcFromInitiativeAsync(token);
         }
         return token;
     }

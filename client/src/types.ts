@@ -38,6 +38,7 @@ export interface Combat {
   entries: InitiativeEntry[]
   turnStartX: number | null
   turnStartY: number | null
+  dashed: boolean
 }
 
 export interface DiceGroup {
@@ -52,6 +53,7 @@ export interface DiceRoll {
   total: number
   target: string | null
   hit: boolean | null
+  damage: boolean
 }
 
 export interface MoveResult {

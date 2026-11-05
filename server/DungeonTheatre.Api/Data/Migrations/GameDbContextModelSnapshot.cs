@@ -51,6 +51,9 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("CurrentTokenId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Dashed")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MovedFeet")
                         .HasColumnType("INTEGER");
 

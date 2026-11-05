@@ -1,4 +1,4 @@
-import { Circle, Group, Image as KonvaImage } from 'react-konva'
+import { Circle, Group, Image as KonvaImage, Line } from 'react-konva'
 import type Konva from 'konva'
 import useImage from 'use-image'
 import type { Token } from './types'
@@ -79,6 +79,14 @@ export function TokenDisc({
       <Circle radius={radius} stroke="#e8e0d0" strokeWidth={2} />
       {active && <Circle radius={radius + 4} stroke="#e0b341" strokeWidth={Math.max(4, radius * 0.12)} />}
       {targeted && <Circle radius={radius + 4} stroke="#e05a5a" strokeWidth={Math.max(4, radius * 0.12)} dash={[8, 5]} />}
+      {!token.isPlayer && token.hp <= 0 && (
+        <>
+          <Line points={[-radius * 0.6, -radius * 0.6, radius * 0.6, radius * 0.6]} stroke="#1a0808" strokeWidth={Math.max(8, radius * 0.3)} lineCap="round" listening={false} />
+          <Line points={[radius * 0.6, -radius * 0.6, -radius * 0.6, radius * 0.6]} stroke="#1a0808" strokeWidth={Math.max(8, radius * 0.3)} lineCap="round" listening={false} />
+          <Line points={[-radius * 0.6, -radius * 0.6, radius * 0.6, radius * 0.6]} stroke="#e03a3a" strokeWidth={Math.max(5, radius * 0.18)} lineCap="round" listening={false} />
+          <Line points={[radius * 0.6, -radius * 0.6, -radius * 0.6, radius * 0.6]} stroke="#e03a3a" strokeWidth={Math.max(5, radius * 0.18)} lineCap="round" listening={false} />
+        </>
+      )}
     </Group>
   )
 }
