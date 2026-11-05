@@ -164,6 +164,7 @@ public class CombatStore(GameDbContext db)
         }
         (placement.X, placement.Y) = (startX, startY);
         encounter.MovedFeet = 0;
+        encounter.Dashed = false;
         await db.SaveChangesAsync();
         return new MovementResetResult(ToDto(placement), await GetCombatAsync(sceneId));
     }

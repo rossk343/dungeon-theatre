@@ -714,13 +714,21 @@ button.danger {
   font-size: 0.75rem;
 }
 
+main {
+  position: relative;
+}
+
 .initiative-column {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
   width: 302px;
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh - 120px);
   min-height: 0;
 }
 
