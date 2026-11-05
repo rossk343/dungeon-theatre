@@ -275,7 +275,10 @@ export default function App() {
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarOpen') !== 'false')
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    const stored = localStorage.getItem('sidebarOpen')
+    return stored === null ? !window.matchMedia('(max-width: 700px)').matches : stored !== 'false'
+  })
   const [sidebarTab, setSidebarTab] = useState<'chapters' | 'scene' | 'tokens'>('chapters')
   const isGm = session?.user.role === 'gm'
 
@@ -346,6 +349,7 @@ export default function App() {
     return () => observer.disconnect()
   }, [session])
 
+  const pinch = useRef<{ dist: number; center: { x: number; y: number } } | null>(null)
   const zoomAt = (px: number, py: number, factor: number) => {
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * factor))
     const k = scale / view.scale
@@ -1132,6 +1136,31 @@ export default function App() {
               }
               window.addEventListener('mousemove', onMove)
               window.addEventListener('mouseup', onUp)
+            }}
+            onTouchMove={(e) => {
+              // Two-finger pinch zooms around the midpoint and pans with it.
+              const [a, b] = [e.evt.touches[0], e.evt.touches[1]]
+              if (!a || !b) return
+              e.evt.preventDefault()
+              const stage = e.target.getStage()
+              if (!stage) return
+              if (stage.isDragging()) stage.stopDrag()
+              const rect = stage.container().getBoundingClientRect()
+              const center = { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top }
+              const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+              const last = pinch.current
+              pinch.current = { dist, center }
+              if (!last || last.dist === 0) return
+              const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * (dist / last.dist)))
+              const k = scale / view.scale
+              setView({
+                scale,
+                x: center.x - (last.center.x - view.x) * k,
+                y: center.y - (last.center.y - view.y) * k,
+              })
+            }}
+            onTouchEnd={() => {
+              pinch.current = null
             }}
             onWheel={(e) => {
               e.evt.preventDefault()
