@@ -78,11 +78,25 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return result;
     }
 
-    public async Task<DiceRoll> RollDice(IReadOnlyList<DiceGroupRequest>? groups, int modifier)
+    // Optionally compares the total to an NPC's AC; the AC itself is never sent to clients.
+    public async Task<DiceRoll> RollDice(
+        IReadOnlyList<DiceGroupRequest>? groups, int modifier, string? sceneId = null, string? targetTokenId = null)
     {
         if (groups is null || groups.Count is < 1 or > 10 || modifier is < -999 or > 999 ||
             groups.Any(g => g is null || g.Sides is not (4 or 6 or 8 or 10 or 12 or 20 or 100) || g.Count is < 1 or > 20))
             throw new HubException("Choose 1-10 rows of standard dice (1-20 each) and a modifier between -999 and 999.");
+
+        TokenEntity? target = null;
+        if (!string.IsNullOrEmpty(targetTokenId))
+        {
+            if (string.IsNullOrEmpty(sceneId)) throw new HubException("Choose a scene to attack in.");
+            if (!IsGm && sceneId != await store.GetActiveSceneIdAsync())
+                throw new HubException("You can only attack in the active scene.");
+            if (!IsGm && !await combats.CurrentTurnIsPlayerAsync(sceneId))
+                throw new HubException("You can only attack on a player's turn.");
+            target = await combats.GetAttackTargetAsync(sceneId, targetTokenId)
+                ?? throw new HubException("Choose an NPC in the initiative order to attack.");
+        }
 
         var rolled = groups
             .Select(g => new DiceGroupResult(
@@ -90,11 +104,14 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
                 g.Sides,
                 Enumerable.Range(0, g.Count).Select(_ => RandomNumberGenerator.GetInt32(g.Sides) + 1).ToArray()))
             .ToList();
+        var total = rolled.Sum(g => g.Rolls.Sum()) + modifier;
         var result = new DiceRoll(
             Context.User?.Identity?.Name ?? "A player",
             rolled,
             modifier,
-            rolled.Sum(g => g.Rolls.Sum()) + modifier);
+            total,
+            target?.Name,
+            target is null ? null : total >= target.ArmorClass);
         await Clients.All.SendAsync("DiceRolled", result);
         return result;
     }
@@ -109,7 +126,8 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
 
     public record DiceGroupRequest(int Count, int Sides);
     public record DiceGroupResult(int Count, int Sides, IReadOnlyList<int> Rolls);
-    public record DiceRoll(string Roller, IReadOnlyList<DiceGroupResult> Groups, int Modifier, int Total);
+    public record DiceRoll(
+        string Roller, IReadOnlyList<DiceGroupResult> Groups, int Modifier, int Total, string? Target, bool? Hit);
 
     public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {
@@ -233,6 +251,15 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         RequireGm();
         var scene = await store.UpdateSceneWallsAsync(sceneId, walls);
         if (scene is null) throw new HubException("The walls are invalid or exceed the supported limits.");
+        await Clients.Others.SendAsync("SceneUpdated", scene);
+        return scene;
+    }
+
+    public async Task<Scene?> UpdateSceneLighting(string sceneId, bool enabled)
+    {
+        RequireGm();
+        var scene = await store.UpdateSceneLightingAsync(sceneId, enabled);
+        if (scene is null) throw new HubException("Scene not found.");
         await Clients.Others.SendAsync("SceneUpdated", scene);
         return scene;
     }

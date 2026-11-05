@@ -213,6 +213,7 @@ export default function App() {
   const [dragPreview, setDragPreview] = useState<{ tokenId: string; x: number; y: number } | null>(null)
   const [combat, setCombat] = useState<Combat | null>(null)
   const [lastDiceRoll, setLastDiceRoll] = useState<DiceRoll | null>(null)
+  const [attackTargetId, setAttackTargetId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const [sceneId, setSceneId] = useState<string | null>(null)
@@ -695,6 +696,14 @@ export default function App() {
     })
   }
 
+  const saveLighting = (lightingEnabled: boolean) => {
+    if (!savedScene) return
+    applyScene({ ...savedScene, lightingEnabled })
+    void invoke<Scene | null>('UpdateSceneLighting', savedScene.id, lightingEnabled).then((updated) => {
+      if (updated) applyScene(updated)
+    })
+  }
+
   const saveWalls = (walls: Wall[]) => {
     if (!savedScene) return
     applyScene({ ...savedScene, walls })
@@ -902,11 +911,18 @@ export default function App() {
     typeof turnStartX === 'number' &&
     typeof turnStartY === 'number' &&
     (currentTurnPosition.x !== turnStartX || currentTurnPosition.y !== turnStartY)
+  const canAttack =
+    combat?.active === true && tokenById.get(combat.currentTokenId ?? '')?.isPlayer === true
+  const attackTargetToken = attackTargetId ? tokenById.get(attackTargetId) : undefined
+  const attackTarget =
+    canAttack && attackTargetToken && combat?.entries.some((entry) => entry.tokenId === attackTargetToken.id)
+      ? attackTargetToken
+      : null
   const sceneWalls = scene?.walls
   const sceneGridSize = scene?.gridSize
   const sceneFeetPerSquare = scene?.feetPerSquare
   const visionSources = (() => {
-    if (!sceneWalls || !sceneGridSize || !sceneFeetPerSquare) return []
+    if (!scene?.lightingEnabled || !sceneWalls || !sceneGridSize || !sceneFeetPerSquare) return []
     const tokensById = new Map(tokens.map((t) => [t.id, t]))
     const pixelsPerFoot = sceneGridSize / sceneFeetPerSquare
     return placements.flatMap((placement) => {
@@ -984,8 +1000,10 @@ export default function App() {
           onEnd={() => combatCall('EndCombat')}
           onResetMovement={() => void resetMovement()}
           lastDiceRoll={lastDiceRoll}
+          attackTarget={attackTarget}
+          onClearTarget={() => setAttackTargetId(null)}
           onRollDice={(groups, modifier) =>
-            void invoke<DiceRoll>('RollDice', groups, modifier).then((roll) => {
+            void invoke<DiceRoll>('RollDice', groups, modifier, sceneId, attackTarget?.id ?? null).then((roll) => {
               if (roll) setLastDiceRoll(roll)
             })
           }
@@ -1149,6 +1167,13 @@ export default function App() {
                     y={p.y}
                     radius={radius}
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
+                    targeted={attackTarget?.id === p.tokenId}
+                    onSelect={
+                      canAttack && !t.isPlayer && combat?.entries.some((entry) => entry.tokenId === t.id) &&
+                      !fogDrawing && !wallDrawing && !measureActive
+                        ? () => setAttackTargetId((current) => (current === t.id ? null : t.id))
+                        : undefined
+                    }
                     draggable={
                       (isGm && !fogDrawing && !wallDrawing && !measureActive) ||
                       (t.isPlayer &&
@@ -1214,12 +1239,14 @@ export default function App() {
             <Layer listening={isGm && !fogDrawing && !wallDrawing && !measureActive}>
               {!isGm && (
                 <>
-                  <Rect
-                    width={scene.width}
-                    height={scene.height}
-                    fill="#000"
-                    listening={false}
-                  />
+                  {scene.lightingEnabled && (
+                    <Rect
+                      width={scene.width}
+                      height={scene.height}
+                      fill="#000"
+                      listening={false}
+                    />
+                  )}
                   {visionSources.map((source, index) => (
                     <Line
                       key={`vision-${index}`}
@@ -1453,6 +1480,14 @@ export default function App() {
                 {wallDrawing ? 'Drawing walls…' : 'Draw walls'}
               </button>
               {wallDrawing && <span className="fog-hint">Esc ends a wall, again leaves</span>}
+              <button
+                className={scene.lightingEnabled ? 'active' : undefined}
+                aria-pressed={scene.lightingEnabled}
+                title="When off, players see the whole map without darkness"
+                onClick={() => saveLighting(!scene.lightingEnabled)}
+              >
+                Lighting: {scene.lightingEnabled ? 'On' : 'Off'}
+              </button>
               {fogDrawing && (
                 <>
                   <span className="fog-hint">Esc cancels</span>

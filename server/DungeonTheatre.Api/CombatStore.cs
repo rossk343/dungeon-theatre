@@ -172,6 +172,17 @@ public class CombatStore(GameDbContext db)
         return encounter is not { Active: true } || encounter.CurrentTokenId == tokenId;
     }
 
+    // An NPC in the scene's initiative order that can be attacked.
+    public async Task<TokenEntity?> GetAttackTargetAsync(string sceneId, string targetTokenId)
+    {
+        var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
+        if (encounter is not { Active: true }) return null;
+        var inOrder = await db.Initiative.AsNoTracking()
+            .AnyAsync(i => i.SceneId == sceneId && i.TokenId == targetTokenId);
+        if (!inOrder) return null;
+        return await db.Tokens.AsNoTracking().FirstOrDefaultAsync(t => t.Id == targetTokenId && !t.IsPlayer);
+    }
+
     public async Task<bool> CurrentTurnIsPlayerAsync(string sceneId)
     {
         var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);

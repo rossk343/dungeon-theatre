@@ -827,6 +827,30 @@ button.danger {
   gap: 6px;
 }
 
+.dice-result.hit .attack-outcome {
+  color: #7ad68a;
+}
+
+.dice-result.miss .attack-outcome {
+  color: #e07a7a;
+}
+
+.attack-target {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 0.85rem;
+  color: #e8a0a0;
+}
+
+.attack-target .icon-button {
+  width: 30px;
+  padding: 0 !important;
+  text-align: center;
+}
+
 .dice-add {
   grid-column: 1 / -1;
 }

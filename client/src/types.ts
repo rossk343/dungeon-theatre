@@ -50,6 +50,8 @@ export interface DiceRoll {
   groups: (DiceGroup & { rolls: number[] })[]
   modifier: number
   total: number
+  target: string | null
+  hit: boolean | null
 }
 
 export interface MoveResult {
@@ -84,6 +86,7 @@ export interface Scene {
   imageUrl: string | null
   fogAreas: FogArea[]
   walls: Wall[]
+  lightingEnabled: boolean
 }
 
 export interface Wall {

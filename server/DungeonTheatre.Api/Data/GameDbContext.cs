@@ -89,6 +89,7 @@ public class SceneEntity
     public string? ImageUrl { get; set; }
     public string FogAreasJson { get; set; } = "[]";
     public string WallsJson { get; set; } = "[]";
+    public bool LightingEnabled { get; set; } = true;
 }
 
 // Composite key: a token appears at most once per scene.

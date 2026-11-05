@@ -18,6 +18,8 @@ interface Props {
   onResetMovement: () => void
   lastDiceRoll: DiceRoll | null
   onRollDice: (groups: DiceGroup[], modifier: number) => void
+  attackTarget: Token | null
+  onClearTarget: () => void
 }
 
 const rollD20 = () => Math.floor(Math.random() * 20) + 1
@@ -232,6 +234,14 @@ export function InitiativeTracker(props: Props) {
         >
           + Add dice
         </button>
+        {props.attackTarget && (
+          <p className="attack-target">
+            Target: <strong>{props.attackTarget.name}</strong>
+            <button className="danger icon-button" aria-label="Clear target" title="Clear target" onClick={props.onClearTarget}>
+              ✕
+            </button>
+          </p>
+        )}
         <div className="dice-row">
           <label>
             Modifier
@@ -245,17 +255,26 @@ export function InitiativeTracker(props: Props) {
             />
           </label>
           <button className="roll-button" onClick={() => props.onRollDice(diceRows.map(({ count, sides }) => ({ count, sides })), diceModifier)}>
-            Roll
+            {props.attackTarget ? 'Attack' : 'Roll'}
           </button>
         </div>
         {props.lastDiceRoll && (
-          <p className="dice-result" role="status" aria-live="polite">
+          <p
+            className={`dice-result${props.lastDiceRoll.hit === null ? '' : props.lastDiceRoll.hit ? ' hit' : ' miss'}`}
+            role="status"
+            aria-live="polite"
+          >
             <strong>{props.lastDiceRoll.roller}</strong> rolled{' '}
             {props.lastDiceRoll.groups.map((g) => `${g.count}d${g.sides}`).join(' + ')}
             {props.lastDiceRoll.modifier > 0 ? ` + ${props.lastDiceRoll.modifier}` : ''}
             {props.lastDiceRoll.modifier < 0 ? ` - ${Math.abs(props.lastDiceRoll.modifier)}` : ''}
             : {props.lastDiceRoll.groups.map((g) => `[${g.rolls.join(', ')}]`).join(' + ')} ={' '}
             <strong>{props.lastDiceRoll.total}</strong>
+            {props.lastDiceRoll.target && (
+              <>
+                {' '}against <strong>{props.lastDiceRoll.target}</strong> — <strong className="attack-outcome">{props.lastDiceRoll.hit ? 'Hit!' : 'Miss'}</strong>
+              </>
+            )}
           </p>
         )}
       </section>

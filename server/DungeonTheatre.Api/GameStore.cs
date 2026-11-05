@@ -16,7 +16,7 @@ public record Chapter(string Id, string Name, int SortOrder);
 public record Scene(
     string Id, string ChapterId, string Name, int SortOrder, int Width, int Height, int GridSize,
     int GridOffsetX, int GridOffsetY, int FeetPerSquare,     string? ImageUrl, IReadOnlyList<FogArea> FogAreas,
-        IReadOnlyList<Wall> Walls);
+        IReadOnlyList<Wall> Walls, bool LightingEnabled);
 
     public record FogPoint(double X, double Y);
     public record FogArea(string Id, IReadOnlyList<FogPoint> Points);
@@ -57,7 +57,7 @@ public class GameStore(GameDbContext db)
     private static Scene ToDto(SceneEntity s) =>
         new(s.Id, s.ChapterId, s.Name, s.SortOrder, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY,
             s.FeetPerSquare, s.ImageUrl, JsonSerializer.Deserialize<List<FogArea>>(s.FogAreasJson) ?? [],
-            JsonSerializer.Deserialize<List<Wall>>(s.WallsJson) ?? []);
+            JsonSerializer.Deserialize<List<Wall>>(s.WallsJson) ?? [], s.LightingEnabled);
 
     public async Task<GameState> GetStateAsync()
     {
@@ -235,6 +235,15 @@ public class GameStore(GameDbContext db)
             return null;
 
         entity.WallsJson = JsonSerializer.Serialize(walls);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public async Task<Scene?> UpdateSceneLightingAsync(string sceneId, bool enabled)
+    {
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null) return null;
+        entity.LightingEnabled = enabled;
         await db.SaveChangesAsync();
         return ToDto(entity);
     }
