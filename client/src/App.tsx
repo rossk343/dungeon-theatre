@@ -168,6 +168,21 @@ export default function App() {
   const [fogDrawing, setFogDrawing] = useState(false)
   const [pendingFogPoints, setPendingFogPoints] = useState<FogPoint[]>([])
   const [fogCursor, setFogCursor] = useState<FogPoint | null>(null)
+  const [fogScreenCursor, setFogScreenCursor] = useState<FogPoint | null>(null)
+  const [hoveredFogId, setHoveredFogId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!fogDrawing) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setFogDrawing(false)
+      setPendingFogPoints([])
+      setFogCursor(null)
+      setFogScreenCursor(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [fogDrawing])
   const [status, setStatus] = useState('connecting')
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -585,13 +600,19 @@ export default function App() {
     })
   }
 
-  const finishFogPolygon = () => {
-    if (pendingFogPoints.length < 3 || !scene) return
-    saveFogAreas([...scene.fogAreas, { id: crypto.randomUUID(), points: pendingFogPoints }])
+  const finishFogPolygon = (points: FogPoint[] = pendingFogPoints) => {
+    if (points.length < 3 || !scene) return
+    saveFogAreas([...scene.fogAreas, { id: crypto.randomUUID(), points }])
     setPendingFogPoints([])
     setFogCursor(null)
     setFogDrawing(false)
   }
+
+  const isNearFogStart = (point: FogPoint) =>
+    pendingFogPoints.length >= 3 &&
+    Math.hypot(point.x - pendingFogPoints[0].x, point.y - pendingFogPoints[0].y) <= 10 / view.scale
+
+  const overFogStart = fogCursor !== null && isNearFogStart(fogCursor)
 
   const showNotice = (text: string) => {
     setNotice(text)
@@ -835,11 +856,15 @@ export default function App() {
             scaleX={view.scale}
             scaleY={view.scale}
             draggable={!(isGm && fogDrawing)}
-            className={`stage${fogDrawing ? ' drawing-fog' : ''}`}
+            className={`stage${fogDrawing ? ' drawing-fog' : ''}${fogDrawing && overFogStart ? ' closing-fog' : ''}${hoveredFogId && !fogDrawing ? ' hover-fog' : ''}`}
             onClick={(e) => {
               if (!isGm || !fogDrawing || !scene) return
               const point = e.target.getStage()?.getRelativePointerPosition()
               if (!point) return
+              if (isNearFogStart(point)) {
+                finishFogPolygon()
+                return
+              }
               setPendingFogPoints((previous) => [
                 ...previous,
                 {
@@ -848,11 +873,20 @@ export default function App() {
                 },
               ])
             }}
+            onDblClick={() => {
+              // The two clicks of a double-click each added a point at the same spot.
+              if (!isGm || !fogDrawing) return
+              finishFogPolygon(pendingFogPoints.slice(0, -1))
+            }}
             onMouseMove={(e) => {
               if (!isGm || !fogDrawing || !scene) return
-              const point = e.target.getStage()?.getRelativePointerPosition()
+              const stage = e.target.getStage()
+              const point = stage?.getRelativePointerPosition()
               if (point) setFogCursor({ x: point.x, y: point.y })
+              const screen = stage?.getPointerPosition()
+              if (screen) setFogScreenCursor({ x: screen.x, y: screen.y })
             }}
+            onMouseLeave={() => setFogScreenCursor(null)}
             onWheel={(e) => {
               e.evt.preventDefault()
               const pointer = e.target.getStage()?.getPointerPosition()
@@ -1003,11 +1037,14 @@ export default function App() {
                   key={area.id}
                   points={area.points.flatMap((point) => [point.x, point.y])}
                   closed
-                  fill="rgba(8,7,12,0.25)"
-                  stroke="#e0b341"
-                  strokeWidth={2}
+                  fill={hoveredFogId === area.id ? 'rgba(224,179,65,0.35)' : 'rgba(8,7,12,0.25)'}
+                  stroke={hoveredFogId === area.id ? '#fff3c4' : '#e0b341'}
+                  strokeWidth={hoveredFogId === area.id ? 3 : 2}
+                  onMouseEnter={() => setHoveredFogId(area.id)}
+                  onMouseLeave={() => setHoveredFogId((current) => (current === area.id ? null : current))}
                   onClick={(e) => {
                     e.cancelBubble = true
+                    setHoveredFogId(null)
                     if (window.confirm('Remove this fog area?'))
                       saveFogAreas(scene.fogAreas.filter((current) => current.id !== area.id))
                   }}
@@ -1027,8 +1064,33 @@ export default function App() {
                   listening={false}
                 />
               )}
+              {isGm && fogDrawing && pendingFogPoints.length > 0 && (
+                <Circle
+                  x={pendingFogPoints[0].x}
+                  y={pendingFogPoints[0].y}
+                  radius={(overFogStart ? 8 : 5) / view.scale}
+                  fill={overFogStart ? '#fff3c4' : '#e0b341'}
+                  stroke="#1a1208"
+                  strokeWidth={1 / view.scale}
+                  listening={false}
+                />
+              )}
             </Layer>
           </Stage>
+          {isGm && fogDrawing && fogScreenCursor && (
+            <div
+              className="fog-tooltip"
+              style={{ left: fogScreenCursor.x + 16, top: fogScreenCursor.y + 16 }}
+            >
+              {overFogStart
+                ? 'Click to close the shape'
+                : pendingFogPoints.length === 0
+                  ? 'Click to place the first point'
+                  : pendingFogPoints.length < 3
+                    ? 'Click to add a point'
+                    : 'Click to add a point · click the first point or double-click to finish'}
+            </div>
+          )}
           <div className="zoom-controls">
             <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.25)} aria-label="Zoom out">−</button>
             <span>{Math.round(view.scale * 100)}%</span>
@@ -1054,8 +1116,8 @@ export default function App() {
               </button>
               {fogDrawing && (
                 <>
-                  <span className="fog-hint">Click map to add points</span>
-                  <button disabled={pendingFogPoints.length < 3} onClick={finishFogPolygon}>
+                  <span className="fog-hint">Esc cancels</span>
+                  <button disabled={pendingFogPoints.length < 3} onClick={() => finishFogPolygon()}>
                     Finish area
                   </button>
                   <button onClick={() => {
