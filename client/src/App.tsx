@@ -280,6 +280,7 @@ export default function App() {
     return stored === null ? !window.matchMedia('(max-width: 700px)').matches : stored !== 'false'
   })
   const [sidebarTab, setSidebarTab] = useState<'chapters' | 'scene' | 'tokens'>('chapters')
+  const [mobileTab, setMobileTab] = useState<'initiative' | 'actions' | 'map' | 'players'>('map')
   const isGm = session?.user.role === 'gm'
 
   useEffect(() => {
@@ -341,9 +342,11 @@ export default function App() {
     if (!session) return
     const el = viewportRef.current
     if (!el) return
-    const observer = new ResizeObserver(([entry]) =>
-      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height }),
-    )
+    const observer = new ResizeObserver(([entry]) => {
+      // A hidden tab reports 0x0; keep the last real size so the view isn't rescaled.
+      if (entry.contentRect.width === 0 || entry.contentRect.height === 0) return
+      setViewport({ width: entry.contentRect.width, height: entry.contentRect.height })
+    })
     observer.observe(el)
     setViewport({ width: el.clientWidth, height: el.clientHeight })
     return () => observer.disconnect()
@@ -985,9 +988,28 @@ export default function App() {
             <button onClick={() => void handleRegenerateInvite()}>New code</button>
           </span>
         )}
-        <button onClick={() => void handleLogout()}>Sign out</button>
+        <button className="sign-out" onClick={() => void handleLogout()} aria-label="Sign out" title="Sign out">
+          <svg className="sign-out-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 3v9" />
+            <path d="M6.4 6.6a8 8 0 1 0 11.2 0" />
+          </svg>
+          <span className="sign-out-text">Sign out</span>
+        </button>
       </header>
-      <main>
+      <div className="mobile-tabs" role="tablist" aria-label="Sections">
+        {(['initiative', 'actions', 'map', 'players'] as const).map((id) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={mobileTab === id}
+            className={mobileTab === id ? 'active' : undefined}
+            onClick={() => setMobileTab(id)}
+          >
+            {id === 'players' && isGm ? 'Manage' : id[0].toUpperCase() + id.slice(1)}
+          </button>
+        ))}
+      </div>
+      <main data-tab={mobileTab}>
         <InitiativeTracker
           combat={combat}
           isGm={isGm}
@@ -1137,7 +1159,20 @@ export default function App() {
               window.addEventListener('mousemove', onMove)
               window.addEventListener('mouseup', onUp)
             }}
+            onTouchStart={(e) => {
+              if (!measureActive || e.evt.touches.length !== 1) return
+              const point = e.target.getStage()?.getRelativePointerPosition()
+              if (!point) return
+              const start = { x: point.x, y: point.y }
+              setMeasureLine({ start, end: start, dragging: true })
+            }}
             onTouchMove={(e) => {
+              if (measureActive && measureLine?.dragging && e.evt.touches.length === 1) {
+                e.evt.preventDefault()
+                const point = e.target.getStage()?.getRelativePointerPosition()
+                if (point) setMeasureLine({ ...measureLine, end: { x: point.x, y: point.y } })
+                return
+              }
               // Two-finger pinch zooms around the midpoint and pans with it.
               const [a, b] = [e.evt.touches[0], e.evt.touches[1]]
               if (!a || !b) return
@@ -1161,6 +1196,10 @@ export default function App() {
             }}
             onTouchEnd={() => {
               pinch.current = null
+              if (!measureLine?.dragging) return
+              if (measureLine.start.x === measureLine.end.x && measureLine.start.y === measureLine.end.y)
+                setMeasureLine(null)
+              else setMeasureLine({ ...measureLine, dragging: false })
             }}
             onWheel={(e) => {
               e.evt.preventDefault()

@@ -1223,24 +1223,87 @@ button.link {
   touch-action: none;
 }
 
-.tracker-tabs {
+.mobile-tabs {
+  display: none;
+}
+
+.sign-out-icon {
   display: none;
 }
 
 @media (max-width: 700px) {
-  .tracker-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
+  .app > header {
+    position: relative;
+    padding-right: 44px;
+    gap: 6px 8px;
   }
 
-  .tracker-tabs button.active {
+  .app > header h1 {
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 1.3rem;
+  }
+
+  .app > header .signed-in {
+    margin-left: 0;
+    font-size: 0.75rem;
+  }
+
+  .app > header .status {
+    font-size: 0.7rem;
+  }
+
+  .sign-out {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .sign-out-icon {
+    display: block;
+    margin: auto;
+  }
+
+  .sign-out-text {
+    display: none;
+  }
+
+  .mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .mobile-tabs button {
+    padding: 7px 2px;
+  }
+
+  .mobile-tabs button.active {
     border-color: #8a659d;
   }
 
-  .initiative-column[data-tab='initiative'] .tracker-actions-panel,
-  .initiative-column[data-tab='actions'] .tracker {
+  main[data-tab='initiative'] .tracker-actions-panel,
+  main[data-tab='initiative'] .viewport,
+  main[data-tab='initiative'] aside,
+  main[data-tab='actions'] .tracker,
+  main[data-tab='actions'] .viewport,
+  main[data-tab='actions'] aside,
+  main[data-tab='map'] .initiative-column,
+  main[data-tab='map'] aside,
+  main[data-tab='players'] .initiative-column,
+  main[data-tab='players'] .viewport,
+  .sidebar-toggle {
     display: none;
+  }
+
+  main[data-tab='players'] aside {
+    display: block;
   }
 
   .initiative-column {
@@ -1263,14 +1326,14 @@ button.link {
   .initiative-column {
     position: static;
     width: auto;
-    max-height: 45vh;
+    max-height: calc(100vh - 150px);
   }
 
   .viewport {
     flex: none;
     width: 100%;
-    height: 70vh;
-    height: 70dvh;
+    height: calc(100vh - 150px);
+    height: calc(100dvh - 150px);
   }
 
   aside {
