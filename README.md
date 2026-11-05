@@ -38,7 +38,7 @@ Vertical slice: scenes with uploaded map images, a calibratable grid, a game-wid
 
 ## Scenes and tokens
 
-A game contains chapters, and chapters contain scenes. Use the **Chapters** panel to add, rename and delete chapters (a chapter must be empty to delete) and to pick a scene; change a scene's chapter from its **Scene** panel. Tokens belong to the game, not to a scene, so their name, HP and art are the same on every map; scenes only store where each token sits. There is a single game for now.
+A game contains chapters, and chapters contain scenes. Use the **Chapters** panel to add, rename and delete chapters (a chapter must be empty to delete) and to pick a scene; change a scene's chapter from its **Scene** panel. Tokens belong to the game, not to a scene, so their name, HP and art are the same on every map; scenes only store where each token sits. There is a single game for now. Everyone can use **Measure** in the map controls: drag on the map to see the distance in feet and squares (counted like movement, with diagonals costing the same); Esc clears it. Measurements are local and not shared.
 
 The GM can mark a scene as **Active** in the scene list. Changing the active scene switches connected players to it, and players cannot join other scenes until the GM changes the active scene again.
 

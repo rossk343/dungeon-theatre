@@ -104,6 +104,24 @@ aside.collapsed {
   font-size: 0.75rem;
 }
 
+.measure-label {
+  position: absolute;
+  z-index: 5;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #8fd3ff;
+  border-radius: 4px;
+  background: rgba(10, 16, 22, 0.92);
+  color: #d8f0ff;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.measure-label.blocked {
+  border-color: #ff5a4d;
+  color: #ffd2cd;
+}
+
 .fog-tooltip {
   position: absolute;
   z-index: 5;

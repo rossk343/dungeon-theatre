@@ -132,6 +132,20 @@ Konva.dragButtons = [0]
 const snap = (v: number, grid: number, offset: number) =>
   Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
 
+// True when segment a-b touches or crosses segment c-d.
+function segmentsIntersect(a: FogPoint, b: FogPoint, c: FogPoint, d: FogPoint): boolean {
+  const cross = (o: FogPoint, p: FogPoint, q: FogPoint) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x)
+  const onSegment = (p: FogPoint, q: FogPoint, r: FogPoint) =>
+    Math.min(p.x, q.x) <= r.x && r.x <= Math.max(p.x, q.x) && Math.min(p.y, q.y) <= r.y && r.y <= Math.max(p.y, q.y)
+  const d1 = cross(c, d, a)
+  const d2 = cross(c, d, b)
+  const d3 = cross(a, b, c)
+  const d4 = cross(a, b, d)
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true
+  return (d1 === 0 && onSegment(c, d, a)) || (d2 === 0 && onSegment(c, d, b)) ||
+    (d3 === 0 && onSegment(a, b, c)) || (d4 === 0 && onSegment(a, b, d))
+}
+
 // Flat [x, y, ...] polygon of what is visible from a point within `radius`, blocked by wall segments.
 function computeVisibility(ox: number, oy: number, radius: number, allWalls: Wall[]): number[] {
   const walls = allWalls.filter((w) =>
@@ -213,6 +227,19 @@ export default function App() {
   const [wallStart, setWallStart] = useState<FogPoint | null>(null)
   const [wallCursor, setWallCursor] = useState<FogPoint | null>(null)
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null)
+  const [measureActive, setMeasureActive] = useState(false)
+  const [measureLine, setMeasureLine] = useState<{ start: FogPoint; end: FogPoint; dragging: boolean } | null>(null)
+
+  useEffect(() => {
+    if (!measureActive) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (measureLine) setMeasureLine(null)
+      else setMeasureActive(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [measureActive, measureLine])
 
   useEffect(() => {
     if (!wallDrawing) return
@@ -333,6 +360,8 @@ export default function App() {
     setWallDrawing(false)
     setWallStart(null)
     setWallCursor(null)
+    setMeasureActive(false)
+    setMeasureLine(null)
     setPreview(null)
     setCombat(null)
     const [list, state] = await Promise.all([
@@ -836,6 +865,9 @@ export default function App() {
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
   const placed = new Set(placements.map((p) => p.tokenId))
+  const measureBlocked =
+    !!scene && !!measureLine &&
+    scene.walls.some((w) => segmentsIntersect(measureLine.start, measureLine.end, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }))
   const npcTokens = tokens.filter((t) => !t.isPlayer)
   const renderTokenRow = (t: Token, asGm: boolean) => (
     <TokenRow
@@ -982,8 +1014,8 @@ export default function App() {
             y={view.y}
             scaleX={view.scale}
             scaleY={view.scale}
-            draggable={!(isGm && (fogDrawing || wallDrawing))}
-            className={`stage${fogDrawing || wallDrawing ? ' drawing-fog' : ''}${fogDrawing && overFogStart ? ' closing-fog' : ''}${hoveredFogId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}${hoveredWallId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}`}
+            draggable={!(isGm && (fogDrawing || wallDrawing)) && !measureActive}
+            className={`stage${fogDrawing || wallDrawing || measureActive ? ' drawing-fog' : ''}${fogDrawing && overFogStart ? ' closing-fog' : ''}${hoveredFogId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}${hoveredWallId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}`}
             onClick={(e) => {
               if (e.evt.button !== 0) return
               if (isGm && wallDrawing && scene) {
@@ -1023,6 +1055,11 @@ export default function App() {
               finishFogPolygon(pendingFogPoints.slice(0, -1))
             }}
             onMouseMove={(e) => {
+              if (measureActive && measureLine?.dragging) {
+                const point = e.target.getStage()?.getRelativePointerPosition()
+                if (point) setMeasureLine({ ...measureLine, end: { x: point.x, y: point.y } })
+                return
+              }
               if (!isGm || !(fogDrawing || wallDrawing) || !scene) return
               const stage = e.target.getStage()
               const point = stage?.getRelativePointerPosition()
@@ -1034,7 +1071,22 @@ export default function App() {
               if (screen) setFogScreenCursor({ x: screen.x, y: screen.y })
             }}
             onMouseLeave={() => setFogScreenCursor(null)}
+            onMouseUp={(e) => {
+              if (e.evt.button !== 0 || !measureLine?.dragging) return
+              // A bare click without dragging clears the measurement.
+              if (measureLine.start.x === measureLine.end.x && measureLine.start.y === measureLine.end.y)
+                setMeasureLine(null)
+              else setMeasureLine({ ...measureLine, dragging: false })
+            }}
             onMouseDown={(e) => {
+              if (e.evt.button === 0 && measureActive) {
+                const point = e.target.getStage()?.getRelativePointerPosition()
+                if (point) {
+                  const start = { x: point.x, y: point.y }
+                  setMeasureLine({ start, end: start, dragging: true })
+                }
+                return
+              }
               if (e.evt.button !== 1) return
               // Middle-button hold pans the map in every mode, including while drawing.
               e.evt.preventDefault()
@@ -1098,9 +1150,9 @@ export default function App() {
                     radius={radius}
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     draggable={
-                      (isGm && !fogDrawing && !wallDrawing) ||
+                      (isGm && !fogDrawing && !wallDrawing && !measureActive) ||
                       (t.isPlayer &&
-                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing && !wallDrawing)
+                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing && !wallDrawing && !measureActive)
                     }
                     onDragMove={(e) => {
                       setDragPreview({ tokenId: p.tokenId, x: e.target.x(), y: e.target.y() })
@@ -1159,7 +1211,7 @@ export default function App() {
                 )
               })}
             </Layer>
-            <Layer listening={isGm && !fogDrawing && !wallDrawing}>
+            <Layer listening={isGm && !fogDrawing && !wallDrawing && !measureActive}>
               {!isGm && (
                 <>
                   <Rect
@@ -1278,8 +1330,43 @@ export default function App() {
                   listening={false}
                 />
               )}
+              {measureLine && (() => {
+                const colour = measureBlocked ? '#ff5a4d' : '#8fd3ff'
+                return (
+                <>
+                  <Line
+                    points={[measureLine.start.x, measureLine.start.y, measureLine.end.x, measureLine.end.y]}
+                    stroke={colour}
+                    strokeWidth={3 / view.scale}
+                    dash={[8 / view.scale, 5 / view.scale]}
+                    lineCap="round"
+                    listening={false}
+                  />
+                  <Circle x={measureLine.start.x} y={measureLine.start.y} radius={5 / view.scale} fill={colour} listening={false} />
+                  <Circle x={measureLine.end.x} y={measureLine.end.y} radius={5 / view.scale} fill={colour} listening={false} />
+                </>
+                )
+              })()}
             </Layer>
           </Stage>
+          {measureActive && measureLine && measureLine.start !== measureLine.end && (() => {
+            const dx = measureLine.end.x - measureLine.start.x
+            const dy = measureLine.end.y - measureLine.start.y
+            // Same rule as movement: squares counted by the larger axis, diagonals cost the same.
+            const squares = Math.max(Math.abs(dx), Math.abs(dy)) / scene.gridSize
+            const feet = Math.round(squares * scene.feetPerSquare)
+            return (
+              <div
+                className={`measure-label${measureBlocked ? ' blocked' : ''}`}
+                style={{
+                  left: view.x + measureLine.end.x * view.scale + 14,
+                  top: view.y + measureLine.end.y * view.scale + 14,
+                }}
+              >
+                {feet} ft · {squares.toFixed(1)} sq{measureBlocked ? ' · blocked by wall' : ''}
+              </div>
+            )
+          })()}
           {isGm && fogDrawing && fogScreenCursor && (
             <div
               className="fog-tooltip"
@@ -1314,6 +1401,23 @@ export default function App() {
                   return rest
                 })
               }>Fit</button>
+            <button
+              className={measureActive ? 'active' : undefined}
+              aria-pressed={measureActive}
+              title="Drag on the map to measure a distance (Esc to clear)"
+              onClick={() => {
+                setMeasureActive((active) => !active)
+                setMeasureLine(null)
+                setFogDrawing(false)
+                setPendingFogPoints([])
+                setFogCursor(null)
+                setWallDrawing(false)
+                setWallStart(null)
+                setWallCursor(null)
+              }}
+            >
+              {measureActive ? 'Measuring…' : 'Measure'}
+            </button>
             {isGm && (
               <>
               <button
@@ -1326,6 +1430,8 @@ export default function App() {
                   setWallDrawing(false)
                   setWallStart(null)
                   setWallCursor(null)
+                  setMeasureActive(false)
+                  setMeasureLine(null)
                 }}
               >
                 {fogDrawing ? 'Drawing fog…' : 'Draw fog'}
@@ -1340,6 +1446,8 @@ export default function App() {
                   setFogDrawing(false)
                   setPendingFogPoints([])
                   setFogCursor(null)
+                  setMeasureActive(false)
+                  setMeasureLine(null)
                 }}
               >
                 {wallDrawing ? 'Drawing walls…' : 'Draw walls'}
