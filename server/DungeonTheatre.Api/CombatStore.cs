@@ -1,5 +1,6 @@
 using DungeonTheatre.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace DungeonTheatre.Api;
 
@@ -184,11 +185,21 @@ public class CombatStore(GameDbContext db)
 
     // Only the token whose turn it is has its movement counted; everything else moves freely.
     // Distance is in grid squares with diagonals costing the same as straight steps.
-    public async Task<MoveResult?> CommitMoveAsync(string sceneId, string tokenId, double x, double y)
+    public async Task<MoveResult?> CommitMoveAsync(
+        string sceneId, string tokenId, double x, double y, bool ignoreWalls = false)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y)) return null;
         var placement = await db.Placements.FindAsync(sceneId, tokenId);
         if (placement is null) return null;
+
+        if (!ignoreWalls)
+        {
+            var wallsJson = await db.Scenes.AsNoTracking().Where(s => s.Id == sceneId)
+                .Select(s => s.WallsJson).FirstOrDefaultAsync();
+            var walls = JsonSerializer.Deserialize<List<Wall>>(wallsJson ?? "[]") ?? [];
+            if (walls.Any(w => SegmentsIntersect(placement.X, placement.Y, x, y, w.X1, w.Y1, w.X2, w.Y2)))
+                return new MoveResult(ToDto(placement), false, "A wall blocks that move.", null);
+        }
 
         var encounter = await db.Encounters.FindAsync(sceneId);
         var metered = encounter is { Active: true } && encounter.CurrentTokenId == tokenId;
@@ -210,6 +221,24 @@ public class CombatStore(GameDbContext db)
         (placement.X, placement.Y) = (x, y);
         await db.SaveChangesAsync();
         return new MoveResult(ToDto(placement), true, null, cost > 0 ? await GetCombatAsync(sceneId) : null);
+    }
+
+    private static bool SegmentsIntersect(
+        double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy)
+    {
+        static double Cross(double ox, double oy, double px, double py, double qx, double qy) =>
+            (px - ox) * (qy - oy) - (py - oy) * (qx - ox);
+        static bool OnSegment(double px, double py, double qx, double qy, double rx, double ry) =>
+            Math.Min(px, qx) <= rx && rx <= Math.Max(px, qx) && Math.Min(py, qy) <= ry && ry <= Math.Max(py, qy);
+
+        var d1 = Cross(cx, cy, dx, dy, ax, ay);
+        var d2 = Cross(cx, cy, dx, dy, bx, by);
+        var d3 = Cross(ax, ay, bx, by, cx, cy);
+        var d4 = Cross(ax, ay, bx, by, dx, dy);
+        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+        // Touching or collinear cases count as blocked so a token can't slip along a wall's end.
+        return (d1 == 0 && OnSegment(cx, cy, dx, dy, ax, ay)) || (d2 == 0 && OnSegment(cx, cy, dx, dy, bx, by)) ||
+               (d3 == 0 && OnSegment(ax, ay, bx, by, cx, cy)) || (d4 == 0 && OnSegment(ax, ay, bx, by, dx, dy));
     }
 
     private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);

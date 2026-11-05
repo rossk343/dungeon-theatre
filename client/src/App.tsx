@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HubConnectionBuilder, type HubConnection } from '@microsoft/signalr'
-import type Konva from 'konva'
+import Konva from 'konva'
 import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import useImage from 'use-image'
 import {
@@ -13,7 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
-import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token } from './types'
+import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token, Wall } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -126,8 +126,47 @@ function shareableView(
   }
 }
 
+// Middle-button panning is handled manually on the stage, so Konva drags only react to the left button.
+Konva.dragButtons = [0]
+
 const snap = (v: number, grid: number, offset: number) =>
   Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
+
+// Flat [x, y, ...] polygon of what is visible from a point within `radius`, blocked by wall segments.
+function computeVisibility(ox: number, oy: number, radius: number, allWalls: Wall[]): number[] {
+  const walls = allWalls.filter((w) =>
+    Math.min(w.x1, w.x2) <= ox + radius && Math.max(w.x1, w.x2) >= ox - radius &&
+    Math.min(w.y1, w.y2) <= oy + radius && Math.max(w.y1, w.y2) >= oy - radius)
+  const angles: number[] = []
+  const arcSteps = 72
+  for (let i = 0; i < arcSteps; i++) angles.push((i / arcSteps) * Math.PI * 2 - Math.PI)
+  for (const w of walls) {
+    for (const [px, py] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+      const a = Math.atan2(py - oy, px - ox)
+      angles.push(a - 0.0001, a, a + 0.0001)
+    }
+  }
+  angles.sort((a, b) => a - b)
+  const points: number[] = []
+  for (const angle of angles) {
+    const dx = Math.cos(angle)
+    const dy = Math.sin(angle)
+    let nearest = radius
+    for (const w of walls) {
+      const sx = w.x2 - w.x1
+      const sy = w.y2 - w.y1
+      const denom = dx * sy - dy * sx
+      if (Math.abs(denom) < 1e-9) continue
+      const t = ((w.x1 - ox) * sy - (w.y1 - oy) * sx) / denom
+      const u = ((w.x1 - ox) * dy - (w.y1 - oy) * dx) / denom
+      // A small overshoot closes hairline gaps where two walls meet.
+      const slack = 1.5 / Math.hypot(sx, sy)
+      if (t >= 0 && u >= -slack && u <= 1 + slack && t < nearest) nearest = t
+    }
+    points.push(ox + dx * nearest, oy + dy * nearest)
+  }
+  return points
+}
 
 const bySort = (a: { sortOrder: number; name: string }, b: { sortOrder: number; name: string }) =>
   a.sortOrder - b.sortOrder || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
@@ -170,6 +209,26 @@ export default function App() {
   const [fogCursor, setFogCursor] = useState<FogPoint | null>(null)
   const [fogScreenCursor, setFogScreenCursor] = useState<FogPoint | null>(null)
   const [hoveredFogId, setHoveredFogId] = useState<string | null>(null)
+  const [wallDrawing, setWallDrawing] = useState(false)
+  const [wallStart, setWallStart] = useState<FogPoint | null>(null)
+  const [wallCursor, setWallCursor] = useState<FogPoint | null>(null)
+  const [hoveredWallId, setHoveredWallId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!wallDrawing) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      // First Esc ends the current chain; a second one leaves wall mode.
+      if (wallStart) setWallStart(null)
+      else {
+        setWallDrawing(false)
+        setWallCursor(null)
+        setFogScreenCursor(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [wallDrawing, wallStart])
 
   useEffect(() => {
     if (!fogDrawing) return
@@ -271,6 +330,9 @@ export default function App() {
     setFogDrawing(false)
     setPendingFogPoints([])
     setFogCursor(null)
+    setWallDrawing(false)
+    setWallStart(null)
+    setWallCursor(null)
     setPreview(null)
     setCombat(null)
     const [list, state] = await Promise.all([
@@ -600,6 +662,42 @@ export default function App() {
     })
   }
 
+  const saveWalls = (walls: Wall[]) => {
+    if (!savedScene) return
+    applyScene({ ...savedScene, walls })
+    void invoke<Scene | null>('UpdateSceneWalls', savedScene.id, walls).then((updated) => {
+      if (updated) applyScene(updated)
+    })
+  }
+
+  // Walls are placed freely by default; hold Shift to snap to grid line intersections.
+  // Either way a point near an existing wall end joins it so corners have no gaps.
+  const snapWallPoint = (point: FogPoint, snapToGrid: boolean): FogPoint => {
+    if (!scene) return point
+    const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value))
+    const snapLine = (value: number, offset: number) =>
+      Math.round((value - offset) / scene.gridSize) * scene.gridSize + offset
+    const placed = snapToGrid
+      ? {
+          x: clamp(snapLine(point.x, scene.gridOffsetX), scene.width),
+          y: clamp(snapLine(point.y, scene.gridOffsetY), scene.height),
+        }
+      : { x: clamp(point.x, scene.width), y: clamp(point.y, scene.height) }
+    const joinDistance = 12 / view.scale
+    let best: FogPoint | null = null
+    let bestDistance = joinDistance
+    for (const wall of scene.walls) {
+      for (const end of [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]) {
+        const distance = Math.hypot(end.x - placed.x, end.y - placed.y)
+        if (distance <= bestDistance) {
+          best = end
+          bestDistance = distance
+        }
+      }
+    }
+    return best ?? placed
+  }
+
   const finishFogPolygon = (points: FogPoint[] = pendingFogPoints) => {
     if (points.length < 3 || !scene) return
     saveFogAreas([...scene.fogAreas, { id: crypto.randomUUID(), points }])
@@ -752,17 +850,26 @@ export default function App() {
     typeof turnStartX === 'number' &&
     typeof turnStartY === 'number' &&
     (currentTurnPosition.x !== turnStartX || currentTurnPosition.y !== turnStartY)
-  const visionSources = scene
-    ? placements.flatMap((placement) => {
-        const token = tokenById.get(placement.tokenId)
-        if (!token?.isPlayer) return []
-        const pixelsPerFoot = scene.gridSize / scene.feetPerSquare
-        const visionRadius = token.visionFeet * pixelsPerFoot
-        const lightRadius = token.lightFeet * pixelsPerFoot
-        const visibleRadius = Math.max(visionRadius, lightRadius)
-        return visibleRadius > 0 ? [{ x: placement.x, y: placement.y, visibleRadius, lightRadius }] : []
-      })
-    : []
+  const sceneWalls = scene?.walls
+  const sceneGridSize = scene?.gridSize
+  const sceneFeetPerSquare = scene?.feetPerSquare
+  const visionSources = (() => {
+    if (!sceneWalls || !sceneGridSize || !sceneFeetPerSquare) return []
+    const tokensById = new Map(tokens.map((t) => [t.id, t]))
+    const pixelsPerFoot = sceneGridSize / sceneFeetPerSquare
+    return placements.flatMap((placement) => {
+      const token = tokensById.get(placement.tokenId)
+      if (!token?.isPlayer) return []
+      const lightRadius = token.lightFeet * pixelsPerFoot
+      const visibleRadius = Math.max(token.visionFeet * pixelsPerFoot, lightRadius)
+      if (visibleRadius <= 0) return []
+      const polygon = computeVisibility(placement.x, placement.y, visibleRadius, sceneWalls)
+      const lightPolygon = lightRadius > 0
+        ? computeVisibility(placement.x, placement.y, lightRadius, sceneWalls)
+        : null
+      return [{ polygon, lightPolygon }]
+    })
+  })()
 
   if (authLoading) {
     return <main className="auth-shell"><p>Entering the campaign hall…</p></main>
@@ -855,9 +962,26 @@ export default function App() {
             y={view.y}
             scaleX={view.scale}
             scaleY={view.scale}
-            draggable={!(isGm && fogDrawing)}
-            className={`stage${fogDrawing ? ' drawing-fog' : ''}${fogDrawing && overFogStart ? ' closing-fog' : ''}${hoveredFogId && !fogDrawing ? ' hover-fog' : ''}`}
+            draggable={!(isGm && (fogDrawing || wallDrawing))}
+            className={`stage${fogDrawing || wallDrawing ? ' drawing-fog' : ''}${fogDrawing && overFogStart ? ' closing-fog' : ''}${hoveredFogId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}${hoveredWallId && !fogDrawing && !wallDrawing ? ' hover-fog' : ''}`}
             onClick={(e) => {
+              if (e.evt.button !== 0) return
+              if (isGm && wallDrawing && scene) {
+                const raw = e.target.getStage()?.getRelativePointerPosition()
+                if (!raw) return
+                const point = snapWallPoint(raw, e.evt.shiftKey)
+                if (!wallStart) {
+                  setWallStart(point)
+                } else if (point.x === wallStart.x && point.y === wallStart.y) {
+                  setWallStart(null)
+                } else {
+                  saveWalls([...scene.walls, {
+                    id: crypto.randomUUID(), x1: wallStart.x, y1: wallStart.y, x2: point.x, y2: point.y,
+                  }])
+                  setWallStart(point)
+                }
+                return
+              }
               if (!isGm || !fogDrawing || !scene) return
               const point = e.target.getStage()?.getRelativePointerPosition()
               if (!point) return
@@ -873,20 +997,44 @@ export default function App() {
                 },
               ])
             }}
-            onDblClick={() => {
+            onDblClick={(e) => {
               // The two clicks of a double-click each added a point at the same spot.
-              if (!isGm || !fogDrawing) return
+              if (e.evt.button !== 0 || !isGm || !fogDrawing) return
               finishFogPolygon(pendingFogPoints.slice(0, -1))
             }}
             onMouseMove={(e) => {
-              if (!isGm || !fogDrawing || !scene) return
+              if (!isGm || !(fogDrawing || wallDrawing) || !scene) return
               const stage = e.target.getStage()
               const point = stage?.getRelativePointerPosition()
-              if (point) setFogCursor({ x: point.x, y: point.y })
+              if (point) {
+                if (wallDrawing) setWallCursor(snapWallPoint(point, e.evt.shiftKey))
+                else setFogCursor({ x: point.x, y: point.y })
+              }
               const screen = stage?.getPointerPosition()
               if (screen) setFogScreenCursor({ x: screen.x, y: screen.y })
             }}
             onMouseLeave={() => setFogScreenCursor(null)}
+            onMouseDown={(e) => {
+              if (e.evt.button !== 1) return
+              // Middle-button hold pans the map in every mode, including while drawing.
+              e.evt.preventDefault()
+              const start = { x: e.evt.clientX, y: e.evt.clientY, viewX: view.x, viewY: view.y }
+              const stageContainer = e.target.getStage()?.container()
+              stageContainer?.style.setProperty('cursor', 'grabbing')
+              const onMove = (event: MouseEvent) =>
+                setView({
+                  ...view,
+                  x: start.viewX + event.clientX - start.x,
+                  y: start.viewY + event.clientY - start.y,
+                })
+              const onUp = () => {
+                stageContainer?.style.removeProperty('cursor')
+                window.removeEventListener('mousemove', onMove)
+                window.removeEventListener('mouseup', onUp)
+              }
+              window.addEventListener('mousemove', onMove)
+              window.addEventListener('mouseup', onUp)
+            }}
             onWheel={(e) => {
               e.evt.preventDefault()
               const pointer = e.target.getStage()?.getPointerPosition()
@@ -930,9 +1078,9 @@ export default function App() {
                     radius={radius}
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     draggable={
-                      (isGm && !fogDrawing) ||
+                      (isGm && !fogDrawing && !wallDrawing) ||
                       (t.isPlayer &&
-                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing)
+                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing && !wallDrawing)
                     }
                     onDragMove={(e) => {
                       setDragPreview({ tokenId: p.tokenId, x: e.target.x(), y: e.target.y() })
@@ -991,32 +1139,30 @@ export default function App() {
                 )
               })}
             </Layer>
-            <Layer listening={isGm && !fogDrawing}>
+            <Layer listening={isGm && !fogDrawing && !wallDrawing}>
               {!isGm && (
                 <>
                   <Rect
                     width={scene.width}
                     height={scene.height}
-                    fill="rgba(0,0,0,0.9)"
+                    fill="#000"
                     listening={false}
                   />
                   {visionSources.map((source, index) => (
-                    <Circle
+                    <Line
                       key={`vision-${index}`}
-                      x={source.x}
-                      y={source.y}
-                      radius={source.visibleRadius}
+                      points={source.polygon}
+                      closed
                       fill="black"
                       globalCompositeOperation="destination-out"
                       listening={false}
                     />
                   ))}
-                  {visionSources.filter((source) => source.lightRadius > 0).map((source, index) => (
-                    <Circle
+                  {visionSources.filter((source) => source.lightPolygon).map((source, index) => (
+                    <Line
                       key={`light-${index}`}
-                      x={source.x}
-                      y={source.y}
-                      radius={source.lightRadius}
+                      points={source.lightPolygon ?? []}
+                      closed
                       fill="rgba(255,190,105,0.12)"
                       listening={false}
                     />
@@ -1050,6 +1196,43 @@ export default function App() {
                   }}
                 />
               ))}
+              {isGm && scene.walls.map((wall) => (
+                <Line
+                  key={wall.id}
+                  points={[wall.x1, wall.y1, wall.x2, wall.y2]}
+                  stroke={hoveredWallId === wall.id ? '#ff8f6b' : '#c2553b'}
+                  strokeWidth={hoveredWallId === wall.id ? 6 : 4}
+                  lineCap="round"
+                  hitStrokeWidth={14}
+                  onMouseEnter={() => setHoveredWallId(wall.id)}
+                  onMouseLeave={() => setHoveredWallId((current) => (current === wall.id ? null : current))}
+                  onClick={(e) => {
+                    e.cancelBubble = true
+                    setHoveredWallId(null)
+                    if (window.confirm('Remove this wall?'))
+                      saveWalls(scene.walls.filter((current) => current.id !== wall.id))
+                  }}
+                />
+              ))}
+              {isGm && wallDrawing && wallStart && wallCursor && (
+                <Line
+                  points={[wallStart.x, wallStart.y, wallCursor.x, wallCursor.y]}
+                  stroke="#ff8f6b"
+                  strokeWidth={3}
+                  dash={[6, 4]}
+                  lineCap="round"
+                  listening={false}
+                />
+              )}
+              {isGm && wallDrawing && wallCursor && (
+                <Circle
+                  x={wallCursor.x}
+                  y={wallCursor.y}
+                  radius={5 / view.scale}
+                  fill="#ff8f6b"
+                  listening={false}
+                />
+              )}
               {isGm && fogDrawing && pendingFogPoints.length > 0 && (
                 <Line
                   points={[
@@ -1091,6 +1274,16 @@ export default function App() {
                     : 'Click to add a point · click the first point or double-click to finish'}
             </div>
           )}
+          {isGm && wallDrawing && fogScreenCursor && (
+            <div
+              className="fog-tooltip"
+              style={{ left: fogScreenCursor.x + 16, top: fogScreenCursor.y + 16 }}
+            >
+              {wallStart
+                ? 'Click to place the wall end · click the same point to stop · Shift snaps to grid'
+                : 'Click to start a wall · Shift snaps to grid'}
+            </div>
+          )}
           <div className="zoom-controls">
             <button onClick={() => zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.25)} aria-label="Zoom out">−</button>
             <span>{Math.round(view.scale * 100)}%</span>
@@ -1110,10 +1303,28 @@ export default function App() {
                   setFogDrawing((drawing) => !drawing)
                   setPendingFogPoints([])
                   setFogCursor(null)
+                  setWallDrawing(false)
+                  setWallStart(null)
+                  setWallCursor(null)
                 }}
               >
                 {fogDrawing ? 'Drawing fog…' : 'Draw fog'}
               </button>
+              <button
+                className={wallDrawing ? 'active' : undefined}
+                aria-pressed={wallDrawing}
+                onClick={() => {
+                  setWallDrawing((drawing) => !drawing)
+                  setWallStart(null)
+                  setWallCursor(null)
+                  setFogDrawing(false)
+                  setPendingFogPoints([])
+                  setFogCursor(null)
+                }}
+              >
+                {wallDrawing ? 'Drawing walls…' : 'Draw walls'}
+              </button>
+              {wallDrawing && <span className="fog-hint">Esc ends a wall, again leaves</span>}
               {fogDrawing && (
                 <>
                   <span className="fog-hint">Esc cancels</span>

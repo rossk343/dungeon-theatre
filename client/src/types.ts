@@ -80,6 +80,15 @@ export interface Scene {
   feetPerSquare: number
   imageUrl: string | null
   fogAreas: FogArea[]
+  walls: Wall[]
+}
+
+export interface Wall {
+  id: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
 }
 
 export interface FogPoint {

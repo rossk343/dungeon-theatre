@@ -163,7 +163,7 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     {
         MoveResult? result;
         if (await CanMoveAsync(sceneId, tokenId))
-            result = await combats.CommitMoveAsync(sceneId, tokenId, x, y);
+            result = await combats.CommitMoveAsync(sceneId, tokenId, x, y, ignoreWalls: IsGm);
         else
         {
             var current = await combats.GetPlacementAsync(sceneId, tokenId);
@@ -221,6 +221,15 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         RequireGm();
         var scene = await store.UpdateSceneFogAsync(sceneId, fogAreas);
         if (scene is null) throw new HubException("The fog areas are invalid or exceed the supported limits.");
+        await Clients.Others.SendAsync("SceneUpdated", scene);
+        return scene;
+    }
+
+    public async Task<Scene?> UpdateSceneWalls(string sceneId, IReadOnlyList<Wall>? walls)
+    {
+        RequireGm();
+        var scene = await store.UpdateSceneWallsAsync(sceneId, walls);
+        if (scene is null) throw new HubException("The walls are invalid or exceed the supported limits.");
         await Clients.Others.SendAsync("SceneUpdated", scene);
         return scene;
     }

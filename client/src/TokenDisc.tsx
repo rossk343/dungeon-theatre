@@ -47,12 +47,14 @@ export function TokenDisc({
         if (draggable) e.target.getStage()?.container().style.setProperty('cursor', 'move')
       }}
       onMouseLeave={(e) => {
-        if (draggable) e.target.getStage()?.container().style.setProperty('cursor', 'grab')
+        e.target.getStage()?.container().style.removeProperty('cursor')
       }}
       onDragStart={(e) => e.target.getStage()?.container().style.setProperty('cursor', 'grabbing')}
       onDragMove={onDragMove}
       onDragEnd={(e) => {
-        e.target.getStage()?.container().style.setProperty('cursor', draggable ? 'move' : 'grab')
+        const style = e.target.getStage()?.container().style
+        if (draggable) style?.setProperty('cursor', 'move')
+        else style?.removeProperty('cursor')
         onDragEnd(e)
       }}
     >

@@ -15,10 +15,14 @@ public record Chapter(string Id, string Name, int SortOrder);
 
 public record Scene(
     string Id, string ChapterId, string Name, int SortOrder, int Width, int Height, int GridSize,
-    int GridOffsetX, int GridOffsetY, int FeetPerSquare, string? ImageUrl, IReadOnlyList<FogArea> FogAreas);
+    int GridOffsetX, int GridOffsetY, int FeetPerSquare,     string? ImageUrl, IReadOnlyList<FogArea> FogAreas,
+        IReadOnlyList<Wall> Walls);
 
-public record FogPoint(double X, double Y);
-public record FogArea(string Id, IReadOnlyList<FogPoint> Points);
+    public record FogPoint(double X, double Y);
+    public record FogArea(string Id, IReadOnlyList<FogPoint> Points);
+
+    // A straight wall segment that blocks player vision and movement.
+    public record Wall(string Id, double X1, double Y1, double X2, double Y2);
 
 // Where a token sits on one scene, in map pixel coordinates.
 public record Placement(string SceneId, string TokenId, double X, double Y);
@@ -52,7 +56,8 @@ public class GameStore(GameDbContext db)
 
     private static Scene ToDto(SceneEntity s) =>
         new(s.Id, s.ChapterId, s.Name, s.SortOrder, s.Width, s.Height, s.GridSize, s.GridOffsetX, s.GridOffsetY,
-            s.FeetPerSquare, s.ImageUrl, JsonSerializer.Deserialize<List<FogArea>>(s.FogAreasJson) ?? []);
+            s.FeetPerSquare, s.ImageUrl, JsonSerializer.Deserialize<List<FogArea>>(s.FogAreasJson) ?? [],
+            JsonSerializer.Deserialize<List<Wall>>(s.WallsJson) ?? []);
 
     public async Task<GameState> GetStateAsync()
     {
@@ -210,6 +215,26 @@ public class GameStore(GameDbContext db)
             return null;
 
         entity.FogAreasJson = JsonSerializer.Serialize(fogAreas);
+        await db.SaveChangesAsync();
+        return ToDto(entity);
+    }
+
+    public async Task<Scene?> UpdateSceneWallsAsync(string sceneId, IReadOnlyList<Wall>? walls)
+    {
+        var entity = await db.Scenes.FindAsync(sceneId);
+        if (entity is null || walls is null || walls.Count > 500) return null;
+        if (walls.Any(wall =>
+                wall is null ||
+                string.IsNullOrWhiteSpace(wall.Id) || wall.Id.Length > 64 ||
+                !double.IsFinite(wall.X1) || !double.IsFinite(wall.Y1) ||
+                !double.IsFinite(wall.X2) || !double.IsFinite(wall.Y2) ||
+                wall.X1 < 0 || wall.X1 > entity.Width || wall.X2 < 0 || wall.X2 > entity.Width ||
+                wall.Y1 < 0 || wall.Y1 > entity.Height || wall.Y2 < 0 || wall.Y2 > entity.Height ||
+                (wall.X1 == wall.X2 && wall.Y1 == wall.Y2)) ||
+            walls.Select(wall => wall.Id).Distinct(StringComparer.Ordinal).Count() != walls.Count)
+            return null;
+
+        entity.WallsJson = JsonSerializer.Serialize(walls);
         await db.SaveChangesAsync();
         return ToDto(entity);
     }

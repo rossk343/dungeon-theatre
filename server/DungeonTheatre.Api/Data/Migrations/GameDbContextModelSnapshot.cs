@@ -168,6 +168,10 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("WallsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Width")
                         .HasColumnType("INTEGER");
 
