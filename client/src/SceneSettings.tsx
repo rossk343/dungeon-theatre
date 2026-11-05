@@ -139,9 +139,11 @@ export function SceneSettings({
 
 export function NewTokenForm({
   busy,
+  kind,
   onCreate,
 }: {
   busy: boolean
+  kind: 'player' | 'npc'
   onCreate: (
     name: string,
     color: string,
@@ -154,6 +156,7 @@ export function NewTokenForm({
     file: File | null,
   ) => Promise<boolean>
 }) {
+  const isPlayer = kind === 'player'
   const [name, setName] = useState('')
   const [color, setColor] = useState('#8a6d3b')
   const [maxHp, setMaxHp] = useState('10')
@@ -161,7 +164,6 @@ export function NewTokenForm({
   const [armorClass, setArmorClass] = useState('10')
   const [vision, setVision] = useState('30')
   const [light, setLight] = useState('0')
-  const [isPlayer, setIsPlayer] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [inputKey, setInputKey] = useState(0)
   const hp = Math.round(Number(maxHp))
@@ -178,7 +180,7 @@ export function NewTokenForm({
 
   return (
     <section className="panel">
-      <h2>New token</h2>
+      <h2>{isPlayer ? 'New player token' : 'New NPC'}</h2>
       <div className="token-create-fields">
         <label className="token-create-field token-create-name">
           <span>Name</span>
@@ -230,13 +232,6 @@ export function NewTokenForm({
           <input type="number" min={0} max={999} value={light} onChange={(e) => setLight(e.target.value)} />
         </label>
       </div>
-      <label className="token-create-field token-create-type">
-        <span>Token type</span>
-        <select value={String(isPlayer)} onChange={(e) => setIsPlayer(e.target.value === 'true')}>
-          <option value="false">NPC / enemy (GM-controlled)</option>
-          <option value="true">Player token</option>
-        </select>
-      </label>
       <label className="token-create-field token-create-art">
         <span>Art (optional)</span>
         <input
@@ -246,21 +241,23 @@ export function NewTokenForm({
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
       </label>
-      <p className="hint">Art is optional; without it the token is a coloured disc.</p>
+      <p className="hint">
+        Art is optional; without it the token is a coloured disc.
+        {!isPlayer && ' The NPC is added to this scene.'}
+      </p>
       <button
         disabled={busy || !valid}
         onClick={async () => {
           if (await onCreate(name.trim(), color, hp, spd, ac, visionFeet, lightFeet, isPlayer, file)) {
             setName('')
             setFile(null)
-            setIsPlayer(false)
             setVision('30')
             setLight('0')
             setInputKey((k) => k + 1)
           }
         }}
       >
-        {busy ? 'Saving…' : 'Create token'}
+        {busy ? 'Saving…' : isPlayer ? 'Create player token' : 'Create NPC'}
       </button>
     </section>
   )

@@ -627,7 +627,11 @@ export default function App() {
     const t = await run(() =>
       createToken(name, color, maxHp, speedFeet, armorClass, visionFeet, lightFeet, isPlayer, file),
     )
-    if (t) applyToken(t)
+    if (t) {
+      applyToken(t)
+      // NPCs belong to the scene they're created in.
+      if (!isPlayer) addToScene(t.id)
+    }
     return t !== null
   }
 
@@ -832,6 +836,22 @@ export default function App() {
 
   const tokenById = new Map(tokens.map((t) => [t.id, t]))
   const placed = new Set(placements.map((p) => p.tokenId))
+  const npcTokens = tokens.filter((t) => !t.isPlayer)
+  const renderTokenRow = (t: Token, asGm: boolean) => (
+    <TokenRow
+      key={t.id}
+      token={t}
+      isGm={asGm}
+      onScene={placed.has(t.id)}
+      onSave={saveToken}
+      onSaveLighting={saveTokenLighting}
+      onAdd={() => addToScene(t.id)}
+      onRemove={() => removeFromScene(t.id)}
+      onArt={(f) => void handleTokenArt(t, f)}
+      onDelete={() => handleDeleteToken(t)}
+      onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
+    />
+  )
   const turnStartToken = combat?.active && combat.currentTokenId
     ? tokenById.get(combat.currentTokenId)
     : undefined
@@ -1423,40 +1443,43 @@ export default function App() {
                 )}
                 {sidebarTab === 'scene' && (
                   savedScene ? (
-                    <SceneSettings
-                      key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
-                      scene={savedScene}
-                      chapters={chapters}
-                      busy={uploading}
-                      onPreview={setPreview}
-                      onSave={saveGrid}
-                      onReplaceImage={(f) => void handleReplaceImage(f)}
-                      onRename={renameScene}
-                      onMove={(id) => void handleMoveScene(id)}
-                      onDelete={handleDeleteScene}
-                    />
+                    <>
+                      <SceneSettings
+                        key={`${savedScene.id}:${savedScene.chapterId}:${savedScene.name}:${savedScene.gridSize}:${savedScene.gridOffsetX}:${savedScene.gridOffsetY}:${savedScene.imageUrl}`}
+                        scene={savedScene}
+                        chapters={chapters}
+                        busy={uploading}
+                        onPreview={setPreview}
+                        onSave={saveGrid}
+                        onReplaceImage={(f) => void handleReplaceImage(f)}
+                        onRename={renameScene}
+                        onMove={(id) => void handleMoveScene(id)}
+                        onDelete={handleDeleteScene}
+                      />
+                      <NewTokenForm kind="npc" busy={uploading} onCreate={handleCreateToken} />
+                      <section className="panel">
+                        <h2>NPCs</h2>
+                        {npcTokens.filter((t) => placed.has(t.id)).map((t) => renderTokenRow(t, true))}
+                        {!npcTokens.some((t) => placed.has(t.id)) && (
+                          <p className="hint">No NPCs in this scene yet.</p>
+                        )}
+                        {npcTokens.some((t) => !placed.has(t.id)) && (
+                          <>
+                            <h3>Not in this scene</h3>
+                            {npcTokens.filter((t) => !placed.has(t.id)).map((t) => renderTokenRow(t, true))}
+                          </>
+                        )}
+                      </section>
+                    </>
                   ) : <section className="panel"><p className="hint">Select a scene from Chapters to edit its settings.</p></section>
                 )}
                 {sidebarTab === 'tokens' && (
                   <>
-                    <NewTokenForm busy={uploading} onCreate={handleCreateToken} />
+                    <NewTokenForm kind="player" busy={uploading} onCreate={handleCreateToken} />
                     <section className="panel">
-                      <h2>Tokens</h2>
-                      {tokens.map((t) => (
-                        <TokenRow
-                          key={t.id}
-                          token={t}
-                          isGm
-                          onScene={placed.has(t.id)}
-                          onSave={saveToken}
-                          onSaveLighting={saveTokenLighting}
-                          onAdd={() => addToScene(t.id)}
-                          onRemove={() => removeFromScene(t.id)}
-                          onArt={(f) => void handleTokenArt(t, f)}
-                          onDelete={() => handleDeleteToken(t)}
-                          onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
-                        />
-                      ))}
+                      <h2>Players</h2>
+                      {tokens.filter((t) => t.isPlayer).map((t) => renderTokenRow(t, true))}
+                      {!tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
                     </section>
                   </>
                 )}
@@ -1465,21 +1488,7 @@ export default function App() {
           ) : (
             <section className="panel">
               <h2>Players</h2>
-              {tokens.filter((t) => t.isPlayer).map((t) => (
-                <TokenRow
-                  key={t.id}
-                  token={t}
-                  isGm={false}
-                  onScene={placed.has(t.id)}
-                  onSave={saveToken}
-                  onSaveLighting={saveTokenLighting}
-                  onAdd={() => addToScene(t.id)}
-                  onRemove={() => removeFromScene(t.id)}
-                  onArt={(f) => void handleTokenArt(t, f)}
-                  onDelete={() => handleDeleteToken(t)}
-                  onKindChange={(isPlayer) => void changeTokenKind(t.id, isPlayer)}
-                />
-              ))}
+              {tokens.filter((t) => t.isPlayer).map((t) => renderTokenRow(t, false))}
               {!tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
             </section>
           )}
