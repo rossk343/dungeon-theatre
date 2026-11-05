@@ -984,8 +984,8 @@ export default function App() {
           onEnd={() => combatCall('EndCombat')}
           onResetMovement={() => void resetMovement()}
           lastDiceRoll={lastDiceRoll}
-          onRollDice={(sides, count, modifier) =>
-            void invoke<DiceRoll>('RollDice', sides, count, modifier).then((roll) => {
+          onRollDice={(groups, modifier) =>
+            void invoke<DiceRoll>('RollDice', groups, modifier).then((roll) => {
               if (roll) setLastDiceRoll(roll)
             })
           }

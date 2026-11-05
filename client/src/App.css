@@ -720,6 +720,8 @@ button.danger {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: calc(100vh - 100px);
+  min-height: 0;
 }
 
 .tracker {
@@ -729,13 +731,39 @@ button.danger {
   border: 1px solid #3a3347;
   border-radius: 6px;
   padding: 10px;
-  max-height: calc(100vh - 100px);
+  flex: 1 1 auto;
+  min-height: 140px;
   overflow-y: auto;
 }
 
 .tracker h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin: 0 0 8px;
   font-size: 1.1rem;
+}
+
+.tracker.combat-on {
+  border-color: #4a9a58;
+  box-shadow: 0 0 8px rgba(74, 154, 88, 0.35);
+}
+
+.combat-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: #2a2535;
+  color: #9a90ab;
+  border: 1px solid #3a3347;
+}
+
+.combat-badge.on {
+  background: #2f6b3a;
+  color: #e6f5e9;
+  border-color: #4a9a58;
 }
 
 .tracker-actions-panel {
@@ -750,6 +778,10 @@ button.danger {
   border: 1px solid #3a3347;
   border-radius: 5px;
   background: #17141e;
+  flex: 0 1 auto;
+  max-height: 50%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .tracker-actions-panel h3 {
@@ -768,6 +800,13 @@ button.danger {
 }
 
 .tracker-actions-panel select,
+.tracker-actions-panel input,
+.tracker-actions-panel button {
+  height: 30px;
+  box-sizing: border-box;
+}
+
+.tracker-actions-panel select,
 .tracker-actions-panel input {
   width: 100%;
   min-width: 0;
@@ -778,6 +817,38 @@ button.danger {
   border-radius: 4px;
   padding: 4px;
   font: inherit;
+}
+
+.dice-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px;
+}
+
+.dice-add {
+  grid-column: 1 / -1;
+}
+
+.roll-button {
+  background: #2f6b3a;
+  border-color: #4a9a58;
+  font-weight: 600;
+}
+
+.roll-button:hover {
+  background: #378246;
+}
+
+.dice-row:has(.icon-button) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
+}
+
+.dice-row .icon-button {
+  width: 30px;
+  padding: 0 !important;
+  text-align: center;
 }
 
 .tracker-actions-panel > button {

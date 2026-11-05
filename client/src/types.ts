@@ -40,12 +40,15 @@ export interface Combat {
   turnStartY: number | null
 }
 
-export interface DiceRoll {
-  roller: string
+export interface DiceGroup {
   count: number
   sides: number
+}
+
+export interface DiceRoll {
+  roller: string
+  groups: (DiceGroup & { rolls: number[] })[]
   modifier: number
-  rolls: number[]
   total: number
 }
 

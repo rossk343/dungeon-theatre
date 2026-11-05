@@ -78,22 +78,23 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return result;
     }
 
-    public async Task<DiceRoll> RollDice(int sides, int count, int modifier)
+    public async Task<DiceRoll> RollDice(IReadOnlyList<DiceGroupRequest>? groups, int modifier)
     {
-        if (sides is not (4 or 6 or 8 or 10 or 12 or 20 or 100) || count is < 1 or > 20 ||
-            modifier is < -999 or > 999)
-            throw new HubException("Choose a standard die, 1-20 dice, and a modifier between -999 and 999.");
+        if (groups is null || groups.Count is < 1 or > 10 || modifier is < -999 or > 999 ||
+            groups.Any(g => g is null || g.Sides is not (4 or 6 or 8 or 10 or 12 or 20 or 100) || g.Count is < 1 or > 20))
+            throw new HubException("Choose 1-10 rows of standard dice (1-20 each) and a modifier between -999 and 999.");
 
-        var rolls = Enumerable.Range(0, count)
-            .Select(_ => RandomNumberGenerator.GetInt32(sides) + 1)
-            .ToArray();
+        var rolled = groups
+            .Select(g => new DiceGroupResult(
+                g.Count,
+                g.Sides,
+                Enumerable.Range(0, g.Count).Select(_ => RandomNumberGenerator.GetInt32(g.Sides) + 1).ToArray()))
+            .ToList();
         var result = new DiceRoll(
             Context.User?.Identity?.Name ?? "A player",
-            count,
-            sides,
+            rolled,
             modifier,
-            rolls,
-            rolls.Sum() + modifier);
+            rolled.Sum(g => g.Rolls.Sum()) + modifier);
         await Clients.All.SendAsync("DiceRolled", result);
         return result;
     }
@@ -106,7 +107,9 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
             : state with { Tokens = state.Tokens.Select(token => token.ForPlayerView()).ToList() };
     }
 
-    public record DiceRoll(string Roller, int Count, int Sides, int Modifier, IReadOnlyList<int> Rolls, int Total);
+    public record DiceGroupRequest(int Count, int Sides);
+    public record DiceGroupResult(int Count, int Sides, IReadOnlyList<int> Rolls);
+    public record DiceRoll(string Roller, IReadOnlyList<DiceGroupResult> Groups, int Modifier, int Total);
 
     public async Task<string?> SetActiveScene(string sceneId, double centerX, double centerY, double zoom)
     {

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { Combat, DiceRoll, Placement, Token } from './types'
+import { useRef, useState } from 'react'
+import type { Combat, DiceGroup, DiceRoll, Placement, Token } from './types'
 import { getHealthCondition } from './tokenHealth'
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
   onEnd: () => void
   onResetMovement: () => void
   lastDiceRoll: DiceRoll | null
-  onRollDice: (sides: number, count: number, modifier: number) => void
+  onRollDice: (groups: DiceGroup[], modifier: number) => void
 }
 
 const rollD20 = () => Math.floor(Math.random() * 20) + 1
@@ -26,9 +26,11 @@ export function InitiativeTracker(props: Props) {
   const { combat, tokens, placements } = props
   const [pick, setPick] = useState('')
   const [value, setValue] = useState('')
-  const [diceSides, setDiceSides] = useState(20)
-  const [diceCount, setDiceCount] = useState(1)
+  const [diceRows, setDiceRows] = useState<(DiceGroup & { id: number })[]>([{ id: 0, count: 1, sides: 20 }])
+  const nextRowId = useRef(1)
   const [diceModifier, setDiceModifier] = useState(0)
+  const updateRow = (id: number, change: Partial<DiceGroup>) =>
+    setDiceRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...change } : row)))
 
   const entries = combat?.entries ?? []
   const inOrder = new Set(entries.map((e) => e.tokenId))
@@ -40,8 +42,13 @@ export function InitiativeTracker(props: Props) {
 
   return (
     <div className="initiative-column">
-    <section className="tracker" aria-label="Initiative">
-      <h2>{active ? `Round ${combat?.round}` : 'Initiative'}</h2>
+    <section className={`tracker${active ? ' combat-on' : ''}`} aria-label="Initiative">
+      <h2>
+        {active ? `Round ${combat?.round}` : 'Initiative'}
+        <span className={`combat-badge${active ? ' on' : ''}`} role="status">
+          {active ? 'On' : 'Off'}
+        </span>
+      </h2>
       <div className="tracker-actions">
         {active ? (
           <>
@@ -181,47 +188,74 @@ export function InitiativeTracker(props: Props) {
     </section>
     <section className="tracker-actions-panel" aria-label="Actions">
         <h3>Actions</h3>
-        <label>
-          Dice
-          <select
-            aria-label="Dice sides"
-            value={diceSides}
-            onChange={(e) => setDiceSides(Number(e.target.value))}
-          >
-            {[4, 6, 8, 10, 12, 20, 100].map((sides) => (
-              <option key={sides} value={sides}>d{sides}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Count
-          <input
-            aria-label="Number of dice"
-            type="number"
-            min={1}
-            max={20}
-            value={diceCount}
-            onChange={(e) => setDiceCount(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
-          />
-        </label>
-        <label>
-          Modifier
-          <input
-            aria-label="Dice modifier"
-            type="number"
-            min={-999}
-            max={999}
-            value={diceModifier}
-            onChange={(e) => setDiceModifier(Math.min(999, Math.max(-999, Number(e.target.value) || 0)))}
-          />
-        </label>
-        <button onClick={() => props.onRollDice(diceSides, diceCount, diceModifier)}>Roll</button>
+        {diceRows.map((row, index) => (
+          <div className="dice-row" key={row.id}>
+            <label>
+              Count
+              <input
+                aria-label={`Number of dice, row ${index + 1}`}
+                type="number"
+                min={1}
+                max={20}
+                value={row.count}
+                onChange={(e) => updateRow(row.id, { count: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })}
+              />
+            </label>
+            <label>
+              Dice
+              <select
+                aria-label={`Dice sides, row ${index + 1}`}
+                value={row.sides}
+                onChange={(e) => updateRow(row.id, { sides: Number(e.target.value) })}
+              >
+                {[4, 6, 8, 10, 12, 20, 100].map((sides) => (
+                  <option key={sides} value={sides}>d{sides}</option>
+                ))}
+              </select>
+            </label>
+            {diceRows.length > 1 && (
+              <button
+                className="danger icon-button"
+                aria-label={`Remove dice row ${index + 1}`}
+                title="Remove row"
+                onClick={() => setDiceRows((rows) => rows.filter((r) => r.id !== row.id))}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          className="dice-add"
+          disabled={diceRows.length >= 10}
+          onClick={() => setDiceRows((rows) => [...rows, { id: nextRowId.current++, count: 1, sides: 20 }])}
+        >
+          + Add dice
+        </button>
+        <div className="dice-row">
+          <label>
+            Modifier
+            <input
+              aria-label="Dice modifier"
+              type="number"
+              min={-999}
+              max={999}
+              value={diceModifier}
+              onChange={(e) => setDiceModifier(Math.min(999, Math.max(-999, Number(e.target.value) || 0)))}
+            />
+          </label>
+          <button className="roll-button" onClick={() => props.onRollDice(diceRows.map(({ count, sides }) => ({ count, sides })), diceModifier)}>
+            Roll
+          </button>
+        </div>
         {props.lastDiceRoll && (
           <p className="dice-result" role="status" aria-live="polite">
-            <strong>{props.lastDiceRoll.roller}</strong> rolled {props.lastDiceRoll.count}d{props.lastDiceRoll.sides}
+            <strong>{props.lastDiceRoll.roller}</strong> rolled{' '}
+            {props.lastDiceRoll.groups.map((g) => `${g.count}d${g.sides}`).join(' + ')}
             {props.lastDiceRoll.modifier > 0 ? ` + ${props.lastDiceRoll.modifier}` : ''}
             {props.lastDiceRoll.modifier < 0 ? ` - ${Math.abs(props.lastDiceRoll.modifier)}` : ''}
-            : [{props.lastDiceRoll.rolls.join(', ')}] = <strong>{props.lastDiceRoll.total}</strong>
+            : {props.lastDiceRoll.groups.map((g) => `[${g.rolls.join(', ')}]`).join(' + ')} ={' '}
+            <strong>{props.lastDiceRoll.total}</strong>
           </p>
         )}
       </section>
