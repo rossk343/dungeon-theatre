@@ -300,6 +300,15 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         return placement;
     }
 
+    public async Task<Placement> UpdatePlacementAura(string sceneId, string tokenId, int? radiusFeet, string? color)
+    {
+        RequireGm();
+        var placement = await store.UpdatePlacementAuraAsync(sceneId, tokenId, radiusFeet, color)
+            ?? throw new HubException("Choose a placed token, a radius from 0 to 999 feet, and a valid colour.");
+        await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementMoved", placement);
+        return placement;
+    }
+
     public async Task RemovePlacement(string sceneId, string tokenId)
     {
         RequireGm();

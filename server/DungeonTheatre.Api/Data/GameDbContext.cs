@@ -102,6 +102,8 @@ public class PlacementEntity
     public double X { get; set; }
     public double Y { get; set; }
     public int SizeSquares { get; set; } = 1;
+    public int AuraRadiusFeet { get; set; }
+    public string AuraColor { get; set; } = "#e0b341";
 }
 
 public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(options)

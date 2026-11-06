@@ -123,6 +123,8 @@ export interface Placement {
   x: number
   y: number
   sizeSquares: number
+  auraRadiusFeet: number
+  auraColor: string
 }
 
 export interface GameState {

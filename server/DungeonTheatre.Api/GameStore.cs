@@ -25,7 +25,7 @@ public record Scene(
     public record Wall(string Id, double X1, double Y1, double X2, double Y2);
 
 // Where a token sits on one scene, in map pixel coordinates.
-public record Placement(string SceneId, string TokenId, double X, double Y, int SizeSquares);
+public record Placement(string SceneId, string TokenId, double X, double Y, int SizeSquares, int AuraRadiusFeet, string AuraColor);
 
 public record GameState(
     string GameName, IReadOnlyList<Chapter> Chapters, IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens,
@@ -41,7 +41,8 @@ public class GameStore(GameDbContext db)
     private const int MinGridSize = 10;
     private const int MaxGridSize = 500;
 
-    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares);
+    private static Placement ToDto(PlacementEntity p) =>
+        new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares, p.AuraRadiusFeet, p.AuraColor);
 
     private const int MaxSpeedFeet = 999;
 
@@ -252,7 +253,20 @@ public class GameStore(GameDbContext db)
 
     public async Task<List<Placement>> GetPlacementsAsync(string sceneId) =>
         await db.Placements.AsNoTracking().Where(p => p.SceneId == sceneId)
-            .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares)).ToListAsync();
+            .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares, p.AuraRadiusFeet, p.AuraColor)).ToListAsync();
+
+    public async Task<Placement?> UpdatePlacementAuraAsync(string sceneId, string tokenId, int? radiusFeet, string? color)
+    {
+        if (radiusFeet is null && color is null ||
+            radiusFeet is int radius && !IsValidLightRange(radius) ||
+            color is not null && !IsValidColor(color)) return null;
+        var placement = await db.Placements.FindAsync(sceneId, tokenId);
+        if (placement is null) return null;
+        if (radiusFeet is int newRadius) placement.AuraRadiusFeet = newRadius;
+        if (color is not null) placement.AuraColor = color;
+        await db.SaveChangesAsync();
+        return ToDto(placement);
+    }
 
     public async Task<Placement?> UpdatePlacementSizeAsync(string sceneId, string tokenId, int sizeSquares)
     {

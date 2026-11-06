@@ -119,6 +119,13 @@ namespace DungeonTheatre.Api.Data.Migrations
                     b.Property<string>("TokenId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AuraColor")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AuraRadiusFeet")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("SizeSquares")
                         .HasColumnType("INTEGER");
 

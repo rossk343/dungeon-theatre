@@ -46,6 +46,8 @@ Tokens are a game-wide library; scenes only store placements. The **Tokens** tab
 
 ## Initiative and movement
 
+The GM can set an aura radius (in feet from the token's center) and colour for any placed player or NPC in the current scene. Set the radius to 0 to remove it. Auras are translucent, move with the token, and remain obscured by fog and darkness.
+
 The GM can set the size of a placed player or NPC token in its current scene: Medium (1×1), Large (2×2), Huge (3×3), or Gargantuan (4×4). Other scenes retain their own sizes. Larger tokens snap to the grid, and player movement checks their full footprint against walls.
 
 The **Foe slain!** notification appears for 10 seconds, over the map on desktop and on any tab on mobile.

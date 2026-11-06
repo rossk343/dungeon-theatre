@@ -300,5 +300,6 @@ public class CombatStore(GameDbContext db)
                (d3 == 0 && OnSegment(ax, ay, bx, by, cx, cy)) || (d4 == 0 && OnSegment(ax, ay, bx, by, dx, dy));
     }
 
-    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares);
+    private static Placement ToDto(PlacementEntity p) =>
+        new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares, p.AuraRadiusFeet, p.AuraColor);
 }

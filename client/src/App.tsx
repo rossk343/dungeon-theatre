@@ -832,7 +832,7 @@ export default function App() {
     if (!scene) return
     const x = snap(scene.width / 2, scene.gridSize, scene.gridOffsetX)
     const y = snap(scene.height / 2, scene.gridSize, scene.gridOffsetY)
-    setPlacements((prev) => [...prev, { sceneId: scene.id, tokenId, x, y, sizeSquares: 1 }])
+    setPlacements((prev) => [...prev, { sceneId: scene.id, tokenId, x, y, sizeSquares: 1, auraRadiusFeet: 0, auraColor: '#e0b341' }])
     void invoke('AddPlacement', scene.id, tokenId, x, y)
   }
 
@@ -911,6 +911,13 @@ export default function App() {
       isGm={asGm}
       onScene={placed.has(t.id)}
       placement={placements.find((p) => p.tokenId === t.id)}
+      onAuraChange={(radius, color) => {
+        if (!sceneId) return
+        void invoke<Placement>('UpdatePlacementAura', sceneId, t.id, radius, color).then((placement) => {
+          if (placement && sceneRef.current === placement.sceneId)
+            setPlacements((prev) => prev.map((p) => p.tokenId === placement.tokenId ? placement : p))
+        })
+      }}
       onSizeChange={(size) => {
         if (!sceneId) return
         void invoke<Placement>('UpdatePlacementSize', sceneId, t.id, size).then((placement) => {
@@ -1302,6 +1309,18 @@ export default function App() {
             <Layer listening={false}>
               <MapImage key={scene.imageUrl ?? 'none'} scene={scene} />
               <GridLines scene={scene} />
+            </Layer>
+            <Layer listening={false}>
+              {placements.filter((p) => p.auraRadiusFeet > 0).map((p) => (
+                <Circle
+                  key={`aura-${p.tokenId}`}
+                  x={dragPreview?.tokenId === p.tokenId ? dragPreview.x : p.x}
+                  y={dragPreview?.tokenId === p.tokenId ? dragPreview.y : p.y}
+                  radius={p.auraRadiusFeet * scene.gridSize / scene.feetPerSquare}
+                  fill={p.auraColor}
+                  opacity={0.3}
+                />
+              ))}
             </Layer>
             <Layer>
               {showTurnStartMarker && turnStartToken &&
@@ -1813,6 +1832,7 @@ function TokenRow(props: {
   onScene: boolean
   placement: Placement | undefined
   onSizeChange: (size: number) => void
+  onAuraChange: (radius: number | null, color: string | null) => void
   onSave: (t: Token, name: string, hp: number, speedFeet: number, armorClass: number) => void
   onSaveLighting: (t: Token, visionFeet: number, lightFeet: number) => void
   onAdd: () => void
@@ -1822,6 +1842,7 @@ function TokenRow(props: {
   onKindChange: (isPlayer: boolean) => void
 }) {
   const { token, isGm, onScene } = props
+  const placement = props.placement
   const canEdit = isGm || token.isPlayer
   const healthCondition = getHealthCondition(token.hp, token.maxHp)
   return (
@@ -1939,6 +1960,40 @@ function TokenRow(props: {
             <option value={4}>Gargantuan (4 × 4)</option>
           </select>
         </label>
+      )}
+      {isGm && placement && (
+        <div className="token-aura-fields">
+          <label className="token-field">
+            <span>Aura radius (ft)</span>
+            <input
+              key={`aura-radius-${placement.auraRadiusFeet}`}
+              type="number"
+              min={0}
+              max={999}
+              step={1}
+              aria-label={`${token.name} aura radius in feet`}
+              defaultValue={placement.auraRadiusFeet}
+              onBlur={(e) => {
+                const radius = Number(e.target.value)
+                if (e.target.value !== '' && Number.isInteger(radius) && radius >= 0 && radius <= 999)
+                  props.onAuraChange(radius, null)
+                else e.target.value = String(placement.auraRadiusFeet)
+              }}
+            />
+          </label>
+          <label className="token-field">
+            <span>Aura colour</span>
+            <input
+              type="color"
+              aria-label={`${token.name} aura colour`}
+              key={`aura-color-${placement.auraColor}`}
+              defaultValue={placement.auraColor}
+              onBlur={(e) => {
+                if (e.target.value !== placement.auraColor) props.onAuraChange(null, e.target.value)
+              }}
+            />
+          </label>
+        </div>
       )}
       {isGm && (
         <div className="token-lighting-fields">
