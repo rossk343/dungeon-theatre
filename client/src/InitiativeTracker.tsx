@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Combat, DiceGroup, DiceRoll, Placement, Token } from './types'
 import { getHealthCondition } from './tokenHealth'
+import { commitInputOnEnter } from './inputKeys'
 
 interface Props {
   combat: Combat | null
@@ -83,7 +84,7 @@ export function InitiativeTracker(props: Props) {
         <span className="tracker-column-initiative">Initiative</span>
         <span className="tracker-column-health">HP</span>
       </div>
-      <ol className={`tracker-list${props.isGm ? ' gm' : ''}`}>
+      <ol className={`tracker-list${props.isGm ? ' gm' : ''}`} onKeyDown={commitInputOnEnter}>
         {entries.map((entry) => {
           const t = tokens.get(entry.tokenId)
           if (!t) return null

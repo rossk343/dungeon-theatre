@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { MAX_GRID, MIN_GRID, type Chapter, type GridPreview, type Scene } from './types'
 
 const parse = (s: string, min: number, max: number, fallback: number) => {
@@ -55,6 +55,18 @@ export function SceneSettings({
   const dirty =
     size !== String(scene.gridSize) || ox !== String(scene.gridOffsetX) || oy !== String(scene.gridOffsetY)
 
+  const saveGrid = () => {
+    if (!dirty) return
+    const v = values()
+    onSave(v.gridSize, v.gridOffsetX, v.gridOffsetY)
+  }
+
+  const onGridKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    saveGrid()
+  }
+
   return (
     <section className="panel">
       <h2>Scene</h2>
@@ -85,23 +97,20 @@ export function SceneSettings({
       <p className="hint">Match the lines to the squares printed on the map. Changes preview live.</p>
       <label>
         Square size (px)
-        <input type="number" min={MIN_GRID} max={MAX_GRID} value={size} onChange={(e) => change({ size: e.target.value })} />
+        <input type="number" min={MIN_GRID} max={MAX_GRID} value={size} onChange={(e) => change({ size: e.target.value })} onKeyDown={onGridKeyDown} />
       </label>
       <label>
         Offset X
-        <input type="number" min={0} max={MAX_GRID} value={ox} onChange={(e) => change({ ox: e.target.value })} />
+        <input type="number" min={0} max={MAX_GRID} value={ox} onChange={(e) => change({ ox: e.target.value })} onKeyDown={onGridKeyDown} />
       </label>
       <label>
         Offset Y
-        <input type="number" min={0} max={MAX_GRID} value={oy} onChange={(e) => change({ oy: e.target.value })} />
+        <input type="number" min={0} max={MAX_GRID} value={oy} onChange={(e) => change({ oy: e.target.value })} onKeyDown={onGridKeyDown} />
       </label>
       <div className="row">
         <button
           disabled={!dirty}
-          onClick={() => {
-            const v = values()
-            onSave(v.gridSize, v.gridOffsetX, v.gridOffsetY)
-          }}
+          onClick={saveGrid}
         >
           Save grid
         </button>

@@ -13,6 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
+import { commitInputOnEnter } from './inputKeys'
 import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, PendingDamage, Placement, Scene, Session, Token, Wall } from './types'
 import './App.css'
 
@@ -1846,7 +1847,7 @@ function TokenRow(props: {
   const canEdit = isGm || token.isPlayer
   const healthCondition = getHealthCondition(token.hp, token.maxHp)
   return (
-    <div className={`token-row ${isGm ? 'gm-token-row' : 'player-token-row'}`}>
+    <div className={`token-row ${isGm ? 'gm-token-row' : 'player-token-row'}`} onKeyDown={commitInputOnEnter}>
       {canEdit ? (
         <label className="token-art-trigger" title="Change token art">
           {token.imageUrl ? (
