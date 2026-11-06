@@ -20,7 +20,7 @@ client/   React front end
 4. Permissions (GM vs player, hidden tokens)
 5. Fog of war, chat and dice, measuring, initiative
 
-## Running (requires .NET 10 SDK and Node 20.19+)
+## Running from source (requires .NET 10 SDK and Node 20.19+)
 ```
 # terminal 1
 cd server/DungeonTheatre.Api
@@ -33,6 +33,44 @@ npm run dev
 ```
 Open http://localhost:5173 in two browser tabs and drag a token; it moves in both. Vite proxies `/hubs` and `/api` to the API on port 5092.
 
+## Portable Windows host
+
+### Build the app
+
+On a Windows x64 build machine, install the .NET 10 SDK and Node 20.19 or later. From the repository root, run in PowerShell:
+
+```powershell
+cd client
+npm install
+cd ..
+.\scripts\publish-windows.ps1
+```
+
+The script builds the website and creates a self-contained app in `artifacts\windows-x64`. Copy or zip **the entire folder**, not just the EXE, to share it. The host PC does not need Node or .NET installed.
+
+### Host a game
+
+1. Extract the folder if necessary, then double-click `DungeonTheatre.Api.exe`. Keep its console window open while playing.
+2. On the host PC, open `http://localhost:8080` in a browser. Create the GM account before inviting others: the first account registered becomes the GM.
+3. Give players the invite code shown in the app and one of the local network addresses printed in the console, such as `http://192.168.1.10:8080`. Players on the same network can open that address in their browsers and join as guests or register.
+4. If Windows Firewall prompts for access, allow it on private networks; a firewall rule may be needed for TCP port 8080. Some listed addresses may belong to virtual adapters, so use the host's actual Wi-Fi or Ethernet address.
+5. To stop hosting, press Ctrl+C in the console or close the window.
+
+The host uses HTTP and is intended for a trusted local network, not direct exposure to the internet; passwords and game traffic are not encrypted over the network.
+
+If port 8080 is already in use, launch from PowerShell with a different port:
+
+```powershell
+$env:ASPNETCORE_URLS = 'http://0.0.0.0:8081'
+.\DungeonTheatre.Api.exe
+```
+
+Use that port in the browser and firewall rule.
+
+### Game data and updates
+
+The portable host stores its database, uploaded images and authentication keys in `%LOCALAPPDATA%\DungeonTheatre`, separately from both the app folder and the development database. To choose another location, set `DungeonTheatre__DataDirectory` to an absolute path before launching. Back up that whole folder with the server stopped; keep its authentication keys private. Replacing the app folder with a newer version leaves this data intact, and database migrations run on startup. To move an existing development campaign, stop both servers and copy `server\DungeonTheatre.Api\dungeon-theatre.db` and its `uploads` folder into that data folder; existing login sessions will need to sign in again.
+
 ## Status
 Vertical slice: scenes with uploaded map images, a calibratable grid, a game-wide token library (name, HP) and per-scene placements, all synced over SignalR. Tokens keep their properties across scenes; a scene only stores where each token sits. State is persisted in SQLite via EF Core (`dungeon-theatre.db`, created and seeded on first run; migrations apply automatically on startup).
 
@@ -42,15 +80,17 @@ A game contains chapters, and chapters contain scenes. Use the **Chapters** pane
 
 The GM can mark a scene as **Active** in the scene list. Changing the active scene switches connected players to it, and players cannot join other scenes until the GM changes the active scene again.
 
-Tokens are a game-wide library; scenes only store placements. The **Tokens** tab manages player tokens only. NPCs live in the **Scene** tab: creating one there adds it to the current scene, and NPCs not on the scene are listed below it so they can be added or deleted. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, speed, armour class, vision and light ranges, optional art), replace their art, or delete them. Armour class is editable for all tokens by the GM and for player tokens by players; NPC armour class is GM-only. Vision and light ranges are GM-managed and default to 30 ft and 0 ft. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
+Tokens are a game-wide library; scenes only store placements. The **Tokens** tab manages player and item tokens. NPCs live in the **Scene** tab: creating one there adds it to the current scene, and NPCs not on the scene are listed below it so they can be added or deleted. From the sidebar you can rename or delete scenes, and create tokens (name, colour, max HP, speed, armour class, vision and light ranges, optional art), replace their art, or delete them. Armour class is editable for combatants by the GM and for player tokens by players; NPC armour class is GM-only. Vision and light ranges are GM-managed and default to 30 ft and 0 ft. Deleting a token removes it from every scene; deleting a scene leaves tokens intact. The database is seeded with sample data only when it is first created, so deleting everything won't bring the samples back.
+
+The GM can use the **Players** and **Items** tabs within **Tokens** to manage each category. Create items in **Items**, choose whether players or the GM control them, and add them to scenes. Items have no combat stats, initiative or vision, but can emit light within areas visible to players. Players can edit and move player-controlled items; during combat they may move them only on a player combatant's turn. Item movement is not metered. The GM can set an item's size and aura per scene, just like other tokens.
 
 ## Initiative and movement
 
 Press Enter to apply inline token and initiative edits, or to save edited grid settings.
 
-The GM can set an aura radius (in feet from the token's center) and colour for any placed player or NPC in the current scene. Set the radius to 0 to remove it. Auras are translucent, move with the token, and remain obscured by fog and darkness.
+The GM can set an aura radius (in feet from the token's center) and colour for any placed player, NPC or item in the current scene. Set the radius to 0 to remove it. Auras are translucent, move with the token, and remain obscured by fog and darkness.
 
-The GM can set the size of a placed player or NPC token in its current scene: Medium (1×1), Large (2×2), Huge (3×3), or Gargantuan (4×4). Other scenes retain their own sizes. Larger tokens snap to the grid, and player movement checks their full footprint against walls.
+The GM can set the size of a placed player, NPC or item token in its current scene: Medium (1×1), Large (2×2), Huge (3×3), or Gargantuan (4×4). Other scenes retain their own sizes. Larger tokens snap to the grid, and player movement checks their full footprint against walls.
 
 The **Foe slain!** notification appears for 10 seconds, over the map on desktop and on any tab on mobile.
 

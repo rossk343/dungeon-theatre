@@ -15,7 +15,7 @@ public static class TokenEndpoints
         // Art is optional on create; a token without it renders as a coloured disc.
         group.MapPost("/", async ([FromForm] string? name, [FromForm] string? color, [FromForm] int? maxHp,
                     [FromForm] int? speedFeet, [FromForm] int? armorClass, [FromForm] int? visionFeet,
-                    [FromForm] int? lightFeet, [FromForm] bool? isPlayer, IFormFile? file, GameStore store, MapImageStorage images,
+                    [FromForm] int? lightFeet, [FromForm] bool? isPlayer, [FromForm] bool? isItem, IFormFile? file, GameStore store, MapImageStorage images,
                     IHubContext<GameHub> hub) =>
         {
             if (!GameStore.IsValidName(name, 40))
@@ -47,7 +47,7 @@ public static class TokenEndpoints
             try
             {
                 var token = await store.CreateTokenAsync(
-                    name!, color!, maxHp.Value, speed, ac, vision, light, isPlayer ?? false, image?.Url);
+                    name!, color!, maxHp.Value, speed, ac, vision, light, isPlayer ?? false, isItem ?? false, image?.Url);
                 if (token is null)
                 {
                     images.Delete(image?.Url);

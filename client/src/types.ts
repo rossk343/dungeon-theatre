@@ -9,6 +9,7 @@ export interface Token {
   visionFeet: number
   lightFeet: number
   isPlayer: boolean
+  isItem: boolean
   imageUrl: string | null
 }
 

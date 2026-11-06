@@ -270,6 +270,21 @@ aside .sidebar-tabs button.active {
   border-color: #8a659d;
 }
 
+aside .token-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding-bottom: 8px;
+}
+
+aside .token-tabs button {
+  padding: 7px 4px;
+}
+
+aside .token-tabs button.active {
+  border-color: #8a659d;
+}
+
 aside [role='tabpanel'] {
   min-width: 0;
 }

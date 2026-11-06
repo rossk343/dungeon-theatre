@@ -285,6 +285,7 @@ export default function App() {
     return stored === null ? !window.matchMedia('(max-width: 700px)').matches : stored !== 'false'
   })
   const [sidebarTab, setSidebarTab] = useState<'chapters' | 'scene' | 'tokens'>('chapters')
+  const [tokenTab, setTokenTab] = useState<'players' | 'items'>('players')
   const [mobileTab, setMobileTab] = useState<'initiative' | 'actions' | 'map' | 'players'>('map')
   const isGm = session?.user.role === 'gm'
 
@@ -679,15 +680,16 @@ export default function App() {
     visionFeet: number,
     lightFeet: number,
     isPlayer: boolean,
+    isItem: boolean,
     file: File | null,
   ) => {
     const t = await run(() =>
-      createToken(name, color, maxHp, speedFeet, armorClass, visionFeet, lightFeet, isPlayer, file),
+      createToken(name, color, maxHp, speedFeet, armorClass, visionFeet, lightFeet, isPlayer, isItem, file),
     )
     if (t) {
       applyToken(t)
       // NPCs belong to the scene they're created in.
-      if (!isPlayer) addToScene(t.id)
+      if (!isPlayer && !isItem) addToScene(t.id)
     }
     return t !== null
   }
@@ -904,7 +906,8 @@ export default function App() {
   const measureBlocked =
     !!scene && !!measureLine &&
     scene.walls.some((w) => segmentsIntersect(measureLine.start, measureLine.end, { x: w.x1, y: w.y1 }, { x: w.x2, y: w.y2 }))
-  const npcTokens = tokens.filter((t) => !t.isPlayer)
+  const npcTokens = tokens.filter((t) => !t.isPlayer && !t.isItem)
+  const itemTokens = tokens.filter((t) => t.isItem)
   const renderTokenRow = (t: Token, asGm: boolean) => (
     <TokenRow
       key={t.id}
@@ -954,7 +957,8 @@ export default function App() {
     typeof turnStartY === 'number' &&
     (currentTurnPosition.x !== turnStartX || currentTurnPosition.y !== turnStartY)
   const canAttack =
-    combat?.active === true && tokenById.get(combat.currentTokenId ?? '')?.isPlayer === true
+    combat?.active === true && tokenById.get(combat.currentTokenId ?? '')?.isPlayer === true &&
+    tokenById.get(combat.currentTokenId ?? '')?.isItem === false
   const attackTargetToken = attackTargetId ? tokenById.get(attackTargetId) : undefined
   const attackTarget =
     canAttack && !combat?.dashed && attackTargetToken && combat?.entries.some((entry) => entry.tokenId === attackTargetToken.id)
@@ -969,7 +973,7 @@ export default function App() {
     const pixelsPerFoot = sceneGridSize / sceneFeetPerSquare
     return placements.flatMap((placement) => {
       const token = tokensById.get(placement.tokenId)
-      if (!token?.isPlayer) return []
+      if (!token?.isPlayer || token.isItem) return []
       const lightRadius = token.lightFeet * pixelsPerFoot
       const visibleRadius = Math.max(token.visionFeet * pixelsPerFoot, lightRadius)
       if (visibleRadius <= 0) return []
@@ -978,6 +982,14 @@ export default function App() {
         ? computeVisibility(placement.x, placement.y, lightRadius, sceneWalls)
         : null
       return [{ polygon, lightPolygon }]
+    })
+  })()
+  const itemLights = (() => {
+    if (!scene?.lightingEnabled || !sceneWalls || !sceneGridSize || !sceneFeetPerSquare) return []
+    return placements.flatMap((placement) => {
+      const token = tokenById.get(placement.tokenId)
+      if (!token?.isItem || token.lightFeet <= 0) return []
+      return [computeVisibility(placement.x, placement.y, token.lightFeet * sceneGridSize / sceneFeetPerSquare, sceneWalls)]
     })
   })()
 
@@ -1352,7 +1364,7 @@ export default function App() {
                     active={combat?.active === true && combat.currentTokenId === p.tokenId}
                     targeted={attackTarget?.id === p.tokenId}
                     onSelect={
-                      canAttack && !combat?.dashed && !t.isPlayer && combat?.entries.some((entry) => entry.tokenId === t.id) &&
+                      canAttack && !combat?.dashed && !t.isPlayer && !t.isItem && combat?.entries.some((entry) => entry.tokenId === t.id) &&
                       !fogDrawing && !wallDrawing && !measureActive
                         ? () => setAttackTargetId((current) => (current === t.id ? null : t.id))
                         : undefined
@@ -1360,7 +1372,7 @@ export default function App() {
                     draggable={
                       (isGm && !fogDrawing && !wallDrawing && !measureActive) ||
                       (t.isPlayer &&
-                        (!combat?.active || combat.currentTokenId === p.tokenId) && !fogDrawing && !wallDrawing && !measureActive)
+                        (!combat?.active || (t.isItem ? canAttack : combat.currentTokenId === p.tokenId)) && !fogDrawing && !wallDrawing && !measureActive)
                     }
                     onDragMove={(e) => {
                       setDragPreview({ tokenId: p.tokenId, x: e.target.x(), y: e.target.y() })
@@ -1389,7 +1401,7 @@ export default function App() {
                 const t = tokenById.get(p.tokenId)
                 if (!t) return null
                 const healthCondition = getHealthCondition(t.hp, t.maxHp)
-                if (!isGm && !t.isPlayer)
+                if (!t.isItem && !isGm && !t.isPlayer)
                   return (
                     <Group
                       key={`l${p.tokenId}`}
@@ -1415,7 +1427,7 @@ export default function App() {
                     y={p.y + scene.gridSize * p.sizeSquares / 2 - 2}
                     width={scene.gridSize * p.sizeSquares}
                     align="center"
-                    text={`${t.name} ${t.hp}/${t.maxHp}`}
+                    text={t.isItem ? t.name : `${t.name} ${t.hp}/${t.maxHp}`}
                     fill="#e8e0d0"
                     fontSize={12}
                     shadowColor="black"
@@ -1455,6 +1467,19 @@ export default function App() {
                       listening={false}
                     />
                   ))}
+                  <Group clipFunc={(ctx) => {
+                    for (const source of visionSources) {
+                      if (source.polygon.length < 6) continue
+                      ctx.moveTo(source.polygon[0], source.polygon[1])
+                      for (let i = 2; i < source.polygon.length; i += 2)
+                        ctx.lineTo(source.polygon[i], source.polygon[i + 1])
+                      ctx.closePath()
+                    }
+                  }}>
+                    {itemLights.map((polygon, index) => (
+                      <Line key={`item-light-${index}`} points={polygon} closed fill="rgba(255,190,105,0.12)" listening={false} />
+                    ))}
+                  </Group>
                   {scene.fogAreas.map((area) => (
                     <Line
                       key={area.id}
@@ -1804,22 +1829,55 @@ export default function App() {
                 )}
                 {sidebarTab === 'tokens' && (
                   <>
-                    <NewTokenForm kind="player" busy={uploading} onCreate={handleCreateToken} />
-                    <section className="panel">
-                      <h2>Players</h2>
-                      {tokens.filter((t) => t.isPlayer).map((t) => renderTokenRow(t, true))}
-                      {!tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
-                    </section>
+                    <div className="token-tabs" role="tablist" aria-label="Token categories">
+                      {(['players', 'items'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          id={`token-tab-${tab}`}
+                          role="tab"
+                          aria-selected={tokenTab === tab}
+                          aria-controls={`token-panel-${tab}`}
+                          className={tokenTab === tab ? 'active' : undefined}
+                          onClick={() => setTokenTab(tab)}
+                        >
+                          {tab === 'players' ? 'Players' : 'Items'}
+                        </button>
+                      ))}
+                    </div>
+                    <div id="token-panel-players" role="tabpanel" aria-labelledby="token-tab-players" hidden={tokenTab !== 'players'}>
+                      <NewTokenForm kind="player" busy={uploading} onCreate={handleCreateToken} />
+                      <section className="panel">
+                        <h2>Players</h2>
+                        {tokens.filter((t) => t.isPlayer && !t.isItem).map((t) => renderTokenRow(t, true))}
+                        {!tokens.some((t) => t.isPlayer && !t.isItem) && <p className="hint">No player tokens yet.</p>}
+                      </section>
+                    </div>
+                    <div id="token-panel-items" role="tabpanel" aria-labelledby="token-tab-items" hidden={tokenTab !== 'items'}>
+                      <NewTokenForm kind="item" busy={uploading} onCreate={handleCreateToken} />
+                      <section className="panel">
+                        <h2>Items</h2>
+                        {itemTokens.map((t) => renderTokenRow(t, true))}
+                        {itemTokens.length === 0 && <p className="hint">No items yet.</p>}
+                      </section>
+                    </div>
                   </>
                 )}
               </div>
             </>
           ) : (
+            <>
             <section className="panel">
               <h2>Players</h2>
-              {tokens.filter((t) => t.isPlayer).map((t) => renderTokenRow(t, false))}
-              {!tokens.some((t) => t.isPlayer) && <p className="hint">No player tokens yet.</p>}
+              {tokens.filter((t) => t.isPlayer && !t.isItem).map((t) => renderTokenRow(t, false))}
+              {!tokens.some((t) => t.isPlayer && !t.isItem) && <p className="hint">No player tokens yet.</p>}
             </section>
+            {itemTokens.some((t) => t.isPlayer) && (
+              <section className="panel">
+                <h2>Items</h2>
+                {itemTokens.filter((t) => t.isPlayer).map((t) => renderTokenRow(t, false))}
+              </section>
+            )}
+            </>
           )}
         </aside>
       </main>
@@ -1884,7 +1942,7 @@ function TokenRow(props: {
           onBlur={(e) => e.target.value.trim() && props.onSave(token, e.target.value, token.hp, token.speedFeet, token.armorClass ?? 10)}
         />
       </label>
-      {isGm || token.isPlayer ? (
+      {!token.isItem && (isGm || token.isPlayer ? (
         <label className="token-field token-hp-field">
           <span>HP</span>
           <div className="token-stat token-hp">
@@ -1907,8 +1965,8 @@ function TokenRow(props: {
           aria-label={`${token.name} health: ${healthCondition}`}
           role="img"
         />
-      )}
-      <label className="token-field token-speed-field">
+      ))}
+      {!token.isItem && <label className="token-field token-speed-field">
         <span>Speed</span>
         <div className="token-stat token-speed">
           <input
@@ -1928,8 +1986,8 @@ function TokenRow(props: {
           />
           <span>ft</span>
         </div>
-      </label>
-      {(isGm || token.isPlayer) && <label className="token-field token-ac-field">
+      </label>}
+      {!token.isItem && (isGm || token.isPlayer) && <label className="token-field token-ac-field">
         <span>AC</span>
         <input
           key={`a${token.armorClass}`}
@@ -1998,7 +2056,7 @@ function TokenRow(props: {
       )}
       {isGm && (
         <div className="token-lighting-fields">
-          <label className="token-field">
+          {!token.isItem && <label className="token-field">
             <span>Vision (ft)</span>
             <input
               key={`v${token.visionFeet}`}
@@ -2014,7 +2072,7 @@ function TokenRow(props: {
                 else e.target.value = String(token.visionFeet)
               }}
             />
-          </label>
+          </label>}
           <label className="token-field">
             <span>Light (ft)</span>
             <input
@@ -2040,8 +2098,8 @@ function TokenRow(props: {
           value={String(token.isPlayer)}
           onChange={(e) => props.onKindChange(e.target.value === 'true')}
         >
-          <option value="false">NPC</option>
-          <option value="true">Player</option>
+          <option value="false">{token.isItem ? 'GM-controlled item' : 'NPC'}</option>
+          <option value="true">{token.isItem ? 'Player-controlled item' : 'Player'}</option>
         </select>
       )}
       {isGm && <button onClick={onScene ? props.onRemove : props.onAdd}>{onScene ? 'Remove' : 'Add'}</button>}

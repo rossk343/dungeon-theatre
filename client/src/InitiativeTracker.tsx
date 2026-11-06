@@ -40,7 +40,7 @@ export function InitiativeTracker(props: Props) {
 
   const entries = combat?.entries ?? []
   const inOrder = new Set(entries.map((e) => e.tokenId))
-  const addable = placements.filter((p) => !inOrder.has(p.tokenId) && tokens.has(p.tokenId))
+  const addable = placements.filter((p) => !inOrder.has(p.tokenId) && tokens.has(p.tokenId) && !tokens.get(p.tokenId)?.isItem)
   const chosen = addable.some((p) => p.tokenId === pick) ? pick : (addable[0]?.tokenId ?? '')
   const typed = value.trim() === '' ? null : Math.round(Number(value))
   const typedOk = typed === null || (Number.isFinite(typed) && typed >= -100 && typed <= 1000)

@@ -6,7 +6,7 @@ namespace DungeonTheatre.Api;
 
 // Persistent identity; shared across every scene.
 public record Token(string Id, string Name, string Color, int Hp, int MaxHp, int SpeedFeet, int? ArmorClass,
-    int VisionFeet, int LightFeet, bool IsPlayer, string? ImageUrl)
+    int VisionFeet, int LightFeet, bool IsPlayer, bool IsItem, string? ImageUrl)
 {
     public Token ForPlayerView() => IsPlayer ? this : this with { ArmorClass = null };
 }
@@ -51,7 +51,7 @@ public class GameStore(GameDbContext db)
 
     private static Token ToDto(TokenEntity t) =>
         new(t.Id, t.Name, t.Color, t.Hp, t.MaxHp, t.SpeedFeet, t.ArmorClass, t.VisionFeet, t.LightFeet,
-            t.IsPlayer, t.ImageUrl);
+            t.IsPlayer, t.IsItem, t.ImageUrl);
 
     private static Chapter ToDto(ChapterEntity c) => new(c.Id, c.Name, c.SortOrder);
 
@@ -320,17 +320,20 @@ public class GameStore(GameDbContext db)
         if (entity is null) return null;
         var wasAlive = entity.Hp > 0;
         entity.Name = name;
-        entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
-        entity.SpeedFeet = speedFeet;
-        entity.ArmorClass = armorClass;
+        if (!entity.IsItem)
+        {
+            entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
+            entity.SpeedFeet = speedFeet;
+            entity.ArmorClass = armorClass;
+        }
         await db.SaveChangesAsync();
-        return new TokenHealthUpdate(ToDto(entity), !entity.IsPlayer && wasAlive && entity.Hp == 0);
+        return new TokenHealthUpdate(ToDto(entity), !entity.IsItem && !entity.IsPlayer && wasAlive && entity.Hp == 0);
     }
 
     public async Task<TokenHealthUpdate?> ApplyDamageAsync(string tokenId, int amount)
     {
         var entity = await db.Tokens.FindAsync(tokenId);
-        if (entity is null) return null;
+        if (entity is null || entity.IsItem) return null;
         var wasAlive = entity.Hp > 0;
         entity.Hp = Math.Clamp(entity.Hp - Math.Max(0, amount), 0, entity.MaxHp);
         await db.SaveChangesAsync();
@@ -342,7 +345,7 @@ public class GameStore(GameDbContext db)
         if (!IsValidLightRange(visionFeet) || !IsValidLightRange(lightFeet)) return null;
         var entity = await db.Tokens.FindAsync(tokenId);
         if (entity is null) return null;
-        entity.VisionFeet = visionFeet;
+        entity.VisionFeet = entity.IsItem ? 0 : visionFeet;
         entity.LightFeet = lightFeet;
         await db.SaveChangesAsync();
         return ToDto(entity);
@@ -380,7 +383,7 @@ public class GameStore(GameDbContext db)
     }
 
     public async Task<Token?> CreateTokenAsync(string name, string color, int maxHp, int speedFeet, int armorClass,
-        int visionFeet, int lightFeet, bool isPlayer, string? imageUrl)
+        int visionFeet, int lightFeet, bool isPlayer, bool isItem, string? imageUrl)
     {
         name = name.Trim();
         if (!IsValidName(name, 40) || !IsValidColor(color) || maxHp is < 1 or > 9999 ||
@@ -397,9 +400,10 @@ public class GameStore(GameDbContext db)
             MaxHp = maxHp,
             SpeedFeet = speedFeet,
             ArmorClass = armorClass,
-            VisionFeet = visionFeet,
+            VisionFeet = isItem ? 0 : visionFeet,
             LightFeet = lightFeet,
             IsPlayer = isPlayer,
+            IsItem = isItem,
             ImageUrl = imageUrl,
         };
         db.Tokens.Add(entity);

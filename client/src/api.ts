@@ -104,6 +104,7 @@ export function createToken(
   visionFeet: number,
   lightFeet: number,
   isPlayer: boolean,
+  isItem: boolean,
   file: File | null,
 ): Promise<Token> {
   const form = new FormData()
@@ -115,6 +116,7 @@ export function createToken(
   form.append('visionFeet', String(visionFeet))
   form.append('lightFeet', String(lightFeet))
   form.append('isPlayer', String(isPlayer))
+  form.append('isItem', String(isItem))
   if (file) form.append('file', file)
   return request('/api/tokens', 'POST', form)
 }

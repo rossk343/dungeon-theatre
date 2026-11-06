@@ -40,6 +40,7 @@ public class CombatStore(GameDbContext db)
     {
         if (initiative is < MinInitiative or > MaxInitiative) return null;
         if (!await db.Placements.AnyAsync(p => p.SceneId == sceneId && p.TokenId == tokenId)) return null;
+        if (!await db.Tokens.AnyAsync(t => t.Id == tokenId && !t.IsItem)) return null;
 
         var entry = await db.Initiative.FindAsync(sceneId, tokenId);
         if (entry is null)
@@ -184,9 +185,11 @@ public class CombatStore(GameDbContext db)
     // Players move player tokens; in combat only the token whose turn it is.
     public async Task<bool> PlayerCanMoveAsync(string sceneId, string tokenId)
     {
-        if (!await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == tokenId && t.IsPlayer)) return false;
+        var token = await db.Tokens.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tokenId && t.IsPlayer);
+        if (token is null) return false;
         var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
-        return encounter is not { Active: true } || encounter.CurrentTokenId == tokenId;
+        return encounter is not { Active: true } ||
+            (token.IsItem ? await CurrentTurnIsPlayerAsync(sceneId) : encounter.CurrentTokenId == tokenId);
     }
 
     // Identifies one attacker's turn so a damage roll can only follow a hit made on that turn.
@@ -204,14 +207,14 @@ public class CombatStore(GameDbContext db)
         var inOrder = await db.Initiative.AsNoTracking()
             .AnyAsync(i => i.SceneId == sceneId && i.TokenId == targetTokenId);
         if (!inOrder) return null;
-        return await db.Tokens.AsNoTracking().FirstOrDefaultAsync(t => t.Id == targetTokenId && !t.IsPlayer);
+        return await db.Tokens.AsNoTracking().FirstOrDefaultAsync(t => t.Id == targetTokenId && !t.IsPlayer && !t.IsItem);
     }
 
     public async Task<bool> CurrentTurnIsPlayerAsync(string sceneId)
     {
         var encounter = await db.Encounters.AsNoTracking().FirstOrDefaultAsync(e => e.SceneId == sceneId);
         if (encounter is not { Active: true } || encounter.CurrentTokenId is null) return false;
-        return await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == encounter.CurrentTokenId && t.IsPlayer);
+        return await db.Tokens.AsNoTracking().AnyAsync(t => t.Id == encounter.CurrentTokenId && t.IsPlayer && !t.IsItem);
     }
 
     public async Task<Placement?> GetPlacementAsync(string sceneId, string tokenId) =>

@@ -51,6 +51,7 @@ public class TokenEntity
     public int LightFeet { get; set; }
     // Player tokens can be edited and moved by any player; the rest belong to the GM.
     public bool IsPlayer { get; set; }
+    public bool IsItem { get; set; }
     public string? ImageUrl { get; set; }
 }
 

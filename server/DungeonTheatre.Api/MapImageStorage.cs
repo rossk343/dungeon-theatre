@@ -2,14 +2,14 @@ namespace DungeonTheatre.Api;
 
 public record StoredImage(string Url, int Width, int Height);
 
-public class MapImageStorage(IWebHostEnvironment env)
+public class MapImageStorage(string dataRoot)
 {
     public const int MaxBytes = 25 * 1024 * 1024;
     public const int MaxDimension = 10_000;
     private const long MaxPixels = 64_000_000;
     public const string UrlPrefix = "/uploads/";
 
-    public string Root { get; } = Path.Combine(env.ContentRootPath, "uploads");
+    public string Root { get; } = Path.Combine(dataRoot, "uploads");
 
     // Returns the stored image, or an error message safe to show the user.
     public async Task<(StoredImage? Image, string? Error)> SaveAsync(IFormFile? file)

@@ -152,7 +152,7 @@ export function NewTokenForm({
   onCreate,
 }: {
   busy: boolean
-  kind: 'player' | 'npc'
+  kind: 'player' | 'npc' | 'item'
   onCreate: (
     name: string,
     color: string,
@@ -162,10 +162,13 @@ export function NewTokenForm({
     visionFeet: number,
     lightFeet: number,
     isPlayer: boolean,
+    isItem: boolean,
     file: File | null,
   ) => Promise<boolean>
 }) {
-  const isPlayer = kind === 'player'
+  const isItem = kind === 'item'
+  const [playerControlled, setPlayerControlled] = useState(false)
+  const isPlayer = kind === 'player' || (isItem && playerControlled)
   const [name, setName] = useState('')
   const [color, setColor] = useState('#8a6d3b')
   const [maxHp, setMaxHp] = useState('10')
@@ -189,7 +192,16 @@ export function NewTokenForm({
 
   return (
     <section className="panel">
-      <h2>{isPlayer ? 'New player token' : 'New NPC'}</h2>
+      <h2>{isItem ? 'New item' : isPlayer ? 'New player token' : 'New NPC'}</h2>
+      {isItem && (
+        <label className="token-create-field">
+          <span>Controlled by</span>
+          <select value={String(playerControlled)} onChange={(e) => setPlayerControlled(e.target.value === 'true')}>
+            <option value="false">GM</option>
+            <option value="true">Players</option>
+          </select>
+        </label>
+      )}
       <div className="token-create-fields">
         <label className="token-create-field token-create-name">
           <span>Name</span>
@@ -199,7 +211,7 @@ export function NewTokenForm({
           <span>Colour</span>
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
         </label>
-        <label className="token-create-field">
+        {!isItem && <label className="token-create-field">
           <span>Max HP</span>
           <input
             type="number"
@@ -208,8 +220,8 @@ export function NewTokenForm({
             value={maxHp}
             onChange={(e) => setMaxHp(e.target.value)}
           />
-        </label>
-        <label className="token-create-field">
+        </label>}
+        {!isItem && <label className="token-create-field">
           <span>Speed (ft)</span>
           <input
             type="number"
@@ -219,8 +231,8 @@ export function NewTokenForm({
             value={speed}
             onChange={(e) => setSpeed(e.target.value)}
           />
-        </label>
-        <label className="token-create-field token-create-ac">
+        </label>}
+        {!isItem && <label className="token-create-field token-create-ac">
           <span>AC</span>
           <input
             type="number"
@@ -229,13 +241,13 @@ export function NewTokenForm({
             value={armorClass}
             onChange={(e) => setArmorClass(e.target.value)}
           />
-        </label>
+        </label>}
       </div>
       <div className="token-create-lighting">
-        <label className="token-create-field">
+        {!isItem && <label className="token-create-field">
           <span>Vision (ft)</span>
           <input type="number" min={0} max={999} value={vision} onChange={(e) => setVision(e.target.value)} />
-        </label>
+        </label>}
         <label className="token-create-field">
           <span>Light (ft)</span>
           <input type="number" min={0} max={999} value={light} onChange={(e) => setLight(e.target.value)} />
@@ -252,12 +264,12 @@ export function NewTokenForm({
       </label>
       <p className="hint">
         Art is optional; without it the token is a coloured disc.
-        {!isPlayer && ' The NPC is added to this scene.'}
+        {kind === 'npc' && ' The NPC is added to this scene.'}
       </p>
       <button
         disabled={busy || !valid}
         onClick={async () => {
-          if (await onCreate(name.trim(), color, hp, spd, ac, visionFeet, lightFeet, isPlayer, file)) {
+          if (await onCreate(name.trim(), color, hp, spd, ac, isItem ? 0 : visionFeet, lightFeet, isPlayer, isItem, file)) {
             setName('')
             setFile(null)
             setVision('30')
@@ -266,7 +278,7 @@ export function NewTokenForm({
           }
         }}
       >
-        {busy ? 'Saving…' : isPlayer ? 'Create player token' : 'Create NPC'}
+        {busy ? 'Saving…' : isItem ? 'Create item' : isPlayer ? 'Create player token' : 'Create NPC'}
       </button>
     </section>
   )

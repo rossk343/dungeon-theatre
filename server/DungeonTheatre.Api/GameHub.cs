@@ -40,7 +40,9 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     public async Task SetInitiative(string sceneId, string tokenId, int initiative)
     {
         RequireGm();
-        await Publish(await combats.SetInitiativeAsync(sceneId, tokenId, initiative));
+        var combat = await combats.SetInitiativeAsync(sceneId, tokenId, initiative)
+            ?? throw new HubException("Choose a combatant in the scene and a valid initiative.");
+        await Publish(combat);
     }
 
     public async Task RemoveInitiative(string sceneId, string tokenId)
@@ -190,7 +192,7 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     // A defeated NPC (0 HP) drops out of every scene's initiative order.
     private async Task RemoveDefeatedNpcFromInitiativeAsync(Token token)
     {
-        if (token.IsPlayer || token.Hp > 0) return;
+        if (token.IsItem || token.IsPlayer || token.Hp > 0) return;
         foreach (var combat in await combats.RemoveTokenFromAllAsync(token.Id))
             await Publish(combat);
     }
@@ -250,7 +252,7 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     }
 
     private async Task<bool> CanMoveAsync(string sceneId, string tokenId) =>
-        IsGm || await combats.PlayerCanMoveAsync(sceneId, tokenId);
+        IsGm || (sceneId == await store.GetActiveSceneIdAsync() && await combats.PlayerCanMoveAsync(sceneId, tokenId));
 
     // Live drag feedback for other viewers; not persisted and not rule-checked, but still permission-checked.
     public async Task PreviewPlacement(string sceneId, string tokenId, double x, double y)
