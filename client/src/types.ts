@@ -122,6 +122,7 @@ export interface Placement {
   tokenId: string
   x: number
   y: number
+  sizeSquares: number
 }
 
 export interface GameState {

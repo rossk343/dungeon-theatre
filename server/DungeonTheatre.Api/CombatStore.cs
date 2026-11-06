@@ -229,11 +229,35 @@ public class CombatStore(GameDbContext db)
 
         if (!ignoreWalls)
         {
-            var wallsJson = await db.Scenes.AsNoTracking().Where(s => s.Id == sceneId)
-                .Select(s => s.WallsJson).FirstOrDefaultAsync();
-            var walls = JsonSerializer.Deserialize<List<Wall>>(wallsJson ?? "[]") ?? [];
-            if (walls.Any(w => SegmentsIntersect(placement.X, placement.Y, x, y, w.X1, w.Y1, w.X2, w.Y2)))
+            var scene = await db.Scenes.AsNoTracking().FirstAsync(s => s.Id == sceneId);
+            var walls = JsonSerializer.Deserialize<List<Wall>>(scene.WallsJson) ?? [];
+            var halfSize = placement.SizeSquares * scene.GridSize / 2.0;
+            if (walls.Any(w => placement.SizeSquares == 1
+                ? SegmentsIntersect(placement.X, placement.Y, x, y, w.X1, w.Y1, w.X2, w.Y2)
+                : SweptFootprintIntersectsWall(placement.X, placement.Y, x, y, halfSize, w)))
                 return new MoveResult(ToDto(placement), false, "A wall blocks that move.", null);
+        }
+
+        static bool SweptFootprintIntersectsWall(double x1, double y1, double x2, double y2, double halfSize, Wall wall)
+        {
+            static bool Overlaps(double ax, double ay, double x1, double y1, double x2, double y2, double halfSize, Wall wall)
+            {
+                var start = ax * x1 + ay * y1;
+                var end = ax * x2 + ay * y2;
+                var extent = halfSize * (Math.Abs(ax) + Math.Abs(ay));
+                var wallStart = ax * wall.X1 + ay * wall.Y1;
+                var wallEnd = ax * wall.X2 + ay * wall.Y2;
+                const double epsilon = 1e-7;
+                return Math.Max(wallStart, wallEnd) > Math.Min(start, end) - extent + epsilon
+                    && Math.Min(wallStart, wallEnd) < Math.Max(start, end) + extent - epsilon;
+            }
+            var dx = x2 - x1;
+            var dy = y2 - y1;
+            return Overlaps(1, 0, x1, y1, x2, y2, halfSize, wall)
+                && Overlaps(0, 1, x1, y1, x2, y2, halfSize, wall)
+                && (dx == 0 && dy == 0 || Overlaps(-dy, dx, x1, y1, x2, y2, halfSize, wall))
+                && (wall.X1 == wall.X2 && wall.Y1 == wall.Y2 ||
+                    Overlaps(wall.Y1 - wall.Y2, wall.X2 - wall.X1, x1, y1, x2, y2, halfSize, wall));
         }
 
         var encounter = await db.Encounters.FindAsync(sceneId);
@@ -276,5 +300,5 @@ public class CombatStore(GameDbContext db)
                (d3 == 0 && OnSegment(ax, ay, bx, by, cx, cy)) || (d4 == 0 && OnSegment(ax, ay, bx, by, dx, dy));
     }
 
-    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);
+    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares);
 }

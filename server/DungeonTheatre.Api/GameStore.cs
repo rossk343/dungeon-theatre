@@ -25,7 +25,7 @@ public record Scene(
     public record Wall(string Id, double X1, double Y1, double X2, double Y2);
 
 // Where a token sits on one scene, in map pixel coordinates.
-public record Placement(string SceneId, string TokenId, double X, double Y);
+public record Placement(string SceneId, string TokenId, double X, double Y, int SizeSquares);
 
 public record GameState(
     string GameName, IReadOnlyList<Chapter> Chapters, IReadOnlyList<Scene> Scenes, IReadOnlyList<Token> Tokens,
@@ -41,7 +41,7 @@ public class GameStore(GameDbContext db)
     private const int MinGridSize = 10;
     private const int MaxGridSize = 500;
 
-    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y);
+    private static Placement ToDto(PlacementEntity p) => new(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares);
 
     private const int MaxSpeedFeet = 999;
 
@@ -252,7 +252,31 @@ public class GameStore(GameDbContext db)
 
     public async Task<List<Placement>> GetPlacementsAsync(string sceneId) =>
         await db.Placements.AsNoTracking().Where(p => p.SceneId == sceneId)
-            .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y)).ToListAsync();
+            .Select(p => new Placement(p.SceneId, p.TokenId, p.X, p.Y, p.SizeSquares)).ToListAsync();
+
+    public async Task<Placement?> UpdatePlacementSizeAsync(string sceneId, string tokenId, int sizeSquares)
+    {
+        if (sizeSquares is < 1 or > 4) return null;
+        var placement = await db.Placements.FindAsync(sceneId, tokenId);
+        var scene = await db.Scenes.FindAsync(sceneId);
+        if (placement is null || scene is null) return null;
+        if (placement.SizeSquares == sizeSquares) return ToDto(placement);
+        static double Snap(double value, int grid, int offset, int size) =>
+            Math.Floor((value - offset) / grid) * grid + offset + (size % 2 == 0 ? 0 : grid / 2.0);
+        var x = Snap(placement.X, scene.GridSize, scene.GridOffsetX, sizeSquares);
+        var y = Snap(placement.Y, scene.GridSize, scene.GridOffsetY, sizeSquares);
+        var encounter = await db.Encounters.FindAsync(sceneId);
+        if (encounter is { Active: true } && encounter.CurrentTokenId == tokenId)
+        {
+            if (encounter.TurnStartX is double startX) encounter.TurnStartX = Snap(startX, scene.GridSize, scene.GridOffsetX, sizeSquares);
+            if (encounter.TurnStartY is double startY) encounter.TurnStartY = Snap(startY, scene.GridSize, scene.GridOffsetY, sizeSquares);
+        }
+        placement.X = x;
+        placement.Y = y;
+        placement.SizeSquares = sizeSquares;
+        await db.SaveChangesAsync();
+        return ToDto(placement);
+    }
 
     // Adds the placement; an existing one is returned untouched so this can't bypass movement limits.
     public async Task<Placement?> SetPlacementAsync(string sceneId, string tokenId, double x, double y)

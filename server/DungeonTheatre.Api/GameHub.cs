@@ -256,7 +256,9 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     public async Task PreviewPlacement(string sceneId, string tokenId, double x, double y)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y) || !await CanMoveAsync(sceneId, tokenId)) return;
-        await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementMoved", new Placement(sceneId, tokenId, x, y));
+        var placement = await combats.GetPlacementAsync(sceneId, tokenId);
+        if (placement is null) return;
+        await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementMoved", placement with { X = x, Y = y });
     }
 
     // The committed move: enforces who may move and movement limits, and returns the authoritative result.
@@ -285,6 +287,16 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
         var placement = await store.SetPlacementAsync(sceneId, tokenId, x, y);
         if (placement is not null)
             await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementAdded", placement);
+        return placement;
+    }
+
+    public async Task<Placement> UpdatePlacementSize(string sceneId, string tokenId, int sizeSquares)
+    {
+        RequireGm();
+        var placement = await store.UpdatePlacementSizeAsync(sceneId, tokenId, sizeSquares)
+            ?? throw new HubException("Choose a placed token and a size from 1 to 4 squares.");
+        await Clients.OthersInGroup(Group(sceneId)).SendAsync("PlacementMoved", placement);
+        await Publish(await combats.GetCombatAsync(sceneId));
         return placement;
     }
 

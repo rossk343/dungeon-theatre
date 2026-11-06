@@ -101,6 +101,7 @@ public class PlacementEntity
     public required string TokenId { get; set; }
     public double X { get; set; }
     public double Y { get; set; }
+    public int SizeSquares { get; set; } = 1;
 }
 
 public class GameDbContext(DbContextOptions<GameDbContext> options) : DbContext(options)

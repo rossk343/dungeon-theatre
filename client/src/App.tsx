@@ -129,8 +129,10 @@ function shareableView(
 // Middle-button panning is handled manually on the stage, so Konva drags only react to the left button.
 Konva.dragButtons = [0]
 
-const snap = (v: number, grid: number, offset: number) =>
-  Math.round((v - offset - grid / 2) / grid) * grid + offset + grid / 2
+const snap = (v: number, grid: number, offset: number, sizeSquares = 1) => {
+  const centerOffset = sizeSquares % 2 === 0 ? 0 : grid / 2
+  return Math.round((v - offset - centerOffset) / grid) * grid + offset + centerOffset
+}
 
 // True when segment a-b touches or crosses segment c-d.
 function segmentsIntersect(a: FogPoint, b: FogPoint, c: FogPoint, d: FogPoint): boolean {
@@ -830,7 +832,7 @@ export default function App() {
     if (!scene) return
     const x = snap(scene.width / 2, scene.gridSize, scene.gridOffsetX)
     const y = snap(scene.height / 2, scene.gridSize, scene.gridOffsetY)
-    setPlacements((prev) => [...prev, { sceneId: scene.id, tokenId, x, y }])
+    setPlacements((prev) => [...prev, { sceneId: scene.id, tokenId, x, y, sizeSquares: 1 }])
     void invoke('AddPlacement', scene.id, tokenId, x, y)
   }
 
@@ -908,6 +910,14 @@ export default function App() {
       token={t}
       isGm={asGm}
       onScene={placed.has(t.id)}
+      placement={placements.find((p) => p.tokenId === t.id)}
+      onSizeChange={(size) => {
+        if (!sceneId) return
+        void invoke<Placement>('UpdatePlacementSize', sceneId, t.id, size).then((placement) => {
+          if (placement && sceneRef.current === placement.sceneId)
+            setPlacements((prev) => prev.map((p) => p.tokenId === placement.tokenId ? placement : p))
+        })
+      }}
       onSave={saveToken}
       onSaveLighting={saveTokenLighting}
       onAdd={() => addToScene(t.id)}
@@ -1301,7 +1311,7 @@ export default function App() {
                   token={turnStartToken}
                   x={turnStartX}
                   y={turnStartY}
-                  radius={scene.gridSize / 2 - 4}
+                  radius={scene.gridSize * (turnStartPlacement?.sizeSquares ?? 1) / 2 - 4}
                   opacity={0.3}
                   draggable={false}
                   onDragMove={() => {}}
@@ -1311,7 +1321,7 @@ export default function App() {
               {placements.map((p) => {
                 const t = tokenById.get(p.tokenId)
                 if (!t) return null
-                const radius = scene.gridSize / 2 - 4
+                const radius = scene.gridSize * p.sizeSquares / 2 - 4
                 return (
                   <TokenDisc
                     key={p.tokenId}
@@ -1346,8 +1356,8 @@ export default function App() {
                         void invoke('PreviewPlacement', scene.id, p.tokenId, p.x, p.y)
                         return
                       }
-                      const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX)
-                      const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY)
+                      const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX, p.sizeSquares)
+                      const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY, p.sizeSquares)
                       e.target.position({ x, y })
                       setDragPreview(null)
                       void commitMove(p.tokenId, x, y, e.target)
@@ -1363,13 +1373,13 @@ export default function App() {
                   return (
                     <Group
                       key={`l${p.tokenId}`}
-                      x={p.x - scene.gridSize / 2}
-                      y={p.y + scene.gridSize / 2 - 2}
+                      x={p.x - scene.gridSize * p.sizeSquares / 2}
+                      y={p.y + scene.gridSize * p.sizeSquares / 2 - 2}
                       listening={false}
                     >
-                      <Text text={t.name} width={scene.gridSize} align="center" fill="#e8e0d0" fontSize={12} />
+                      <Text text={t.name} width={scene.gridSize * p.sizeSquares} align="center" fill="#e8e0d0" fontSize={12} />
                       <Rect
-                        x={scene.gridSize / 2 - 4}
+                        x={scene.gridSize * p.sizeSquares / 2 - 4}
                         y={14}
                         width={8}
                         height={8}
@@ -1381,9 +1391,9 @@ export default function App() {
                 return (
                   <Text
                     key={`l${p.tokenId}`}
-                    x={p.x - scene.gridSize / 2}
-                    y={p.y + scene.gridSize / 2 - 2}
-                    width={scene.gridSize}
+                    x={p.x - scene.gridSize * p.sizeSquares / 2}
+                    y={p.y + scene.gridSize * p.sizeSquares / 2 - 2}
+                    width={scene.gridSize * p.sizeSquares}
                     align="center"
                     text={`${t.name} ${t.hp}/${t.maxHp}`}
                     fill="#e8e0d0"
@@ -1801,6 +1811,8 @@ function TokenRow(props: {
   token: Token
   isGm: boolean
   onScene: boolean
+  placement: Placement | undefined
+  onSizeChange: (size: number) => void
   onSave: (t: Token, name: string, hp: number, speedFeet: number, armorClass: number) => void
   onSaveLighting: (t: Token, visionFeet: number, lightFeet: number) => void
   onAdd: () => void
@@ -1913,6 +1925,21 @@ function TokenRow(props: {
           }}
         />
       </label>}
+      {isGm && props.placement && (
+        <label className="token-field token-size-field">
+          <span>Size in this scene</span>
+          <select
+            aria-label={`${token.name} size in this scene`}
+            value={props.placement.sizeSquares}
+            onChange={(e) => props.onSizeChange(Number(e.target.value))}
+          >
+            <option value={1}>Medium (1 × 1)</option>
+            <option value={2}>Large (2 × 2)</option>
+            <option value={3}>Huge (3 × 3)</option>
+            <option value={4}>Gargantuan (4 × 4)</option>
+          </select>
+        </label>
+      )}
       {isGm && (
         <div className="token-lighting-fields">
           <label className="token-field">

@@ -46,6 +46,8 @@ Tokens are a game-wide library; scenes only store placements. The **Tokens** tab
 
 ## Initiative and movement
 
+The GM can set the size of a placed player or NPC token in its current scene: Medium (1×1), Large (2×2), Huge (3×3), or Gargantuan (4×4). Other scenes retain their own sizes. Larger tokens snap to the grid, and player movement checks their full footprint against walls.
+
 The **Foe slain!** notification appears for 10 seconds, over the map on desktop and on any tab on mobile.
 
 On mobile, players can also use **Reset move** from the map toolbar during a player token's turn.
