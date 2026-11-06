@@ -56,6 +56,14 @@ export interface DiceRoll {
   damage: boolean
 }
 
+export interface PendingDamage {
+  id: string
+  roller: string
+  tokenId: string
+  tokenName: string
+  amount: number
+}
+
 export interface MoveResult {
   placement: Placement
   accepted: boolean

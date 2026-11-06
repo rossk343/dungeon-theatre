@@ -13,7 +13,7 @@ import { InitiativeTracker } from './InitiativeTracker'
 import { NewSceneForm, NewTokenForm, SceneSettings } from './SceneSettings'
 import { TokenDisc } from './TokenDisc'
 import { getHealthColor, getHealthCondition } from './tokenHealth'
-import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, Placement, Scene, Session, Token, Wall } from './types'
+import type { Chapter, Combat, DiceRoll, FogArea, FogPoint, GameState, GridPreview, MoveResult, MovementResetResult, PendingDamage, Placement, Scene, Session, Token, Wall } from './types'
 import './App.css'
 
 const SEND_INTERVAL_MS = 50
@@ -213,6 +213,8 @@ export default function App() {
   const [dragPreview, setDragPreview] = useState<{ tokenId: string; x: number; y: number } | null>(null)
   const [combat, setCombat] = useState<Combat | null>(null)
   const [lastDiceRoll, setLastDiceRoll] = useState<DiceRoll | null>(null)
+  const [pendingDamages, setPendingDamages] = useState<PendingDamage[]>([])
+  const [foesSlain, setFoesSlain] = useState(0)
   const [attackTargetId, setAttackTargetId] = useState<string | null>(null)
   // Set after this player's successful attack, to offer a damage roll for that turn and target.
   const [damageKey, setDamageKey] = useState<string | null>(null)
@@ -321,6 +323,7 @@ export default function App() {
   const scene: Scene | null =
     savedScene && preview?.sceneId === savedScene.id ? { ...savedScene, ...preview } : savedScene
   const viewportRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<Konva.Stage>(null)
   const [viewport, setViewport] = useState({ width: 800, height: 600 })
   const [views, setViews] = useState<Record<string, View>>(loadViews)
   const viewKey = scene ? `${scene.id}:${scene.imageUrl ?? ''}` : ''
@@ -352,7 +355,7 @@ export default function App() {
     return () => observer.disconnect()
   }, [session])
 
-  const pinch = useRef<{ dist: number; center: { x: number; y: number } } | null>(null)
+  const pinch = useRef<{ dist: number; center: { x: number; y: number }; view: View } | null>(null)
   const zoomAt = (px: number, py: number, factor: number) => {
     const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * factor))
     const k = scale / view.scale
@@ -409,6 +412,12 @@ export default function App() {
   const userId = session?.user.id
 
   useEffect(() => {
+    if (foesSlain === 0) return
+    const timer = window.setTimeout(() => setFoesSlain((count) => count - 1), 10000)
+    return () => window.clearTimeout(timer)
+  }, [foesSlain])
+
+  useEffect(() => {
     if (!userId) return
     const conn = new HubConnectionBuilder().withUrl('/hubs/game').withAutomaticReconnect().build()
     connection.current = conn
@@ -432,6 +441,11 @@ export default function App() {
       if (c.sceneId === sceneRef.current) setCombat(c)
     })
     conn.on('DiceRolled', (roll: DiceRoll) => setLastDiceRoll(roll))
+    conn.on('DamagePending', (p: PendingDamage) =>
+      setPendingDamages((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p])),
+    )
+    conn.on('DamageResolved', (id: string) => setPendingDamages((prev) => prev.filter((x) => x.id !== id)))
+    conn.on('FoeSlain', () => setFoesSlain((count) => count + 1))
     conn.on('TokenUpdated', applyToken)
     conn.on('TokenDeleted', (id: string) => {
       setTokens((prev) => prev.filter((t) => t.id !== id))
@@ -589,6 +603,7 @@ export default function App() {
       setTokens([])
       setPlacements([])
       setCombat(null)
+      setFoesSlain(0)
       setActiveSceneId(null)
       sceneRef.current = null
       setSceneId(null)
@@ -996,6 +1011,9 @@ export default function App() {
           <span className="sign-out-text">Sign out</span>
         </button>
       </header>
+      {!isGm && foesSlain > 0 && (
+        <div className="foe-slain foe-slain-mobile" role="status">Foe slain!</div>
+      )}
       <div className="mobile-tabs" role="tablist" aria-label="Sections">
         {(['initiative', 'actions', 'map', 'players'] as const).map((id) => (
           <button
@@ -1009,6 +1027,26 @@ export default function App() {
           </button>
         ))}
       </div>
+      {isGm && pendingDamages[0] && (
+        <div className="modal-backdrop">
+          <div className="modal" role="alertdialog" aria-labelledby="damage-title">
+            <h2 id="damage-title">Damage roll</h2>
+            <p>
+              <strong>{pendingDamages[0].roller}</strong> rolled <strong>{pendingDamages[0].amount}</strong> damage to{' '}
+              <strong>{pendingDamages[0].tokenName}</strong>.
+            </p>
+            {pendingDamages.length > 1 && <p className="hint">{pendingDamages.length - 1} more waiting</p>}
+            <div className="modal-actions">
+              <button className="danger" onClick={() => void invoke('ResolveDamage', pendingDamages[0].id, false)}>
+                Reject
+              </button>
+              <button className="roll-button" onClick={() => void invoke('ResolveDamage', pendingDamages[0].id, true)}>
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <main data-tab={mobileTab}>
         <InitiativeTracker
           combat={combat}
@@ -1042,7 +1080,66 @@ export default function App() {
             })
           }}
         />
-        <div className="viewport" ref={viewportRef}>
+        <div
+          className="viewport"
+          ref={viewportRef}
+          onTouchStartCapture={(e) => {
+            if (pinch.current) {
+              e.stopPropagation()
+              return
+            }
+            const stage = stageRef.current
+            if (!stage || e.touches.length !== 2 || !(e.target instanceof Node) || !stage.container().contains(e.target)) return
+            const [a, b] = [e.touches[0], e.touches[1]]
+            const rect = stage.container().getBoundingClientRect()
+            pinch.current = {
+              dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+              center: { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top },
+              view: { x: stage.x(), y: stage.y(), scale: stage.scaleX() },
+            }
+            // Cancel a drag before Konva can interpret the second finger as another drag.
+            if (stage.isDragging()) stage.stopDrag()
+            stage.find('Group').forEach((group) => {
+              if (group.isDragging()) group.stopDrag()
+            })
+            setMeasureLine(null)
+            e.stopPropagation()
+          }}
+          onTouchMoveCapture={(e) => {
+            const last = pinch.current
+            if (!last) return
+            e.stopPropagation()
+            const stage = stageRef.current
+            if (!stage || e.touches.length !== 2) return
+            const [a, b] = [e.touches[0], e.touches[1]]
+            const rect = stage.container().getBoundingClientRect()
+            const center = { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top }
+            const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+            if (last.dist === 0 || dist === 0) return
+            const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, last.view.scale * dist / last.dist))
+            const k = scale / last.view.scale
+            const next = {
+              scale,
+              x: center.x - (last.center.x - last.view.x) * k,
+              y: center.y - (last.center.y - last.view.y) * k,
+            }
+            pinch.current = { dist, center, view: next }
+            setView(next)
+          }}
+          onTouchEndCapture={(e) => {
+            if (!pinch.current) return
+            e.stopPropagation()
+            if (e.touches.length === 0) pinch.current = null
+          }}
+          onTouchCancelCapture={(e) => {
+            if (!pinch.current) return
+            e.stopPropagation()
+            if (e.touches.length === 0) pinch.current = null
+          }}
+        >
+          {!isGm && foesSlain > 0 && (
+            <div className="foe-slain foe-slain-map" role="status">Foe slain!</div>
+          )}
           {notice && (
             <div className="notice" role="status">
               {notice}
@@ -1060,6 +1157,7 @@ export default function App() {
         {scene && (
           <>
           <Stage
+            ref={stageRef}
             width={viewport.width}
             height={viewport.height}
             x={view.x}
@@ -1173,29 +1271,8 @@ export default function App() {
                 if (point) setMeasureLine({ ...measureLine, end: { x: point.x, y: point.y } })
                 return
               }
-              // Two-finger pinch zooms around the midpoint and pans with it.
-              const [a, b] = [e.evt.touches[0], e.evt.touches[1]]
-              if (!a || !b) return
-              e.evt.preventDefault()
-              const stage = e.target.getStage()
-              if (!stage) return
-              if (stage.isDragging()) stage.stopDrag()
-              const rect = stage.container().getBoundingClientRect()
-              const center = { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top }
-              const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
-              const last = pinch.current
-              pinch.current = { dist, center }
-              if (!last || last.dist === 0) return
-              const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.scale * (dist / last.dist)))
-              const k = scale / view.scale
-              setView({
-                scale,
-                x: center.x - (last.center.x - view.x) * k,
-                y: center.y - (last.center.y - view.y) * k,
-              })
             }}
             onTouchEnd={() => {
-              pinch.current = null
               if (!measureLine?.dragging) return
               if (measureLine.start.x === measureLine.end.x && measureLine.start.y === measureLine.end.y)
                 setMeasureLine(null)
@@ -1208,7 +1285,7 @@ export default function App() {
             }}
             onDragEnd={(e) => {
               // Token drags bubble up here; only react to the stage itself being panned.
-              if (e.target !== e.target.getStage()) return
+              if (pinch.current || e.target !== e.target.getStage()) return
               setView({ ...view, x: e.target.x(), y: e.target.y() })
             }}
           >
@@ -1263,6 +1340,12 @@ export default function App() {
                       void invoke('PreviewPlacement', scene.id, p.tokenId, e.target.x(), e.target.y())
                     }}
                     onDragEnd={(e) => {
+                      if (pinch.current) {
+                        e.target.position({ x: p.x, y: p.y })
+                        setDragPreview(null)
+                        void invoke('PreviewPlacement', scene.id, p.tokenId, p.x, p.y)
+                        return
+                      }
                       const x = snap(e.target.x(), scene.gridSize, scene.gridOffsetX)
                       const y = snap(e.target.y(), scene.gridSize, scene.gridOffsetY)
                       e.target.position({ x, y })
@@ -1521,40 +1604,37 @@ export default function App() {
             >
               {measureActive ? 'Measuring…' : 'Measure'}
             </button>
+            {!isGm && canAttack && (
+              <button
+                className="mobile-reset-move"
+                title="Return the current token to the start of its turn and reset movement"
+                onClick={() => void resetMovement()}
+              >
+                Reset move
+              </button>
+            )}
             {isGm && (
               <>
-              <button
-                className={fogDrawing ? 'active' : undefined}
-                aria-pressed={fogDrawing}
-                onClick={() => {
-                  setFogDrawing((drawing) => !drawing)
+              <select
+                className={fogDrawing || wallDrawing ? 'active' : undefined}
+                aria-label="Drawing tool"
+                value={fogDrawing ? 'fog' : wallDrawing ? 'walls' : ''}
+                onChange={(e) => {
+                  const tool = e.target.value
+                  setFogDrawing(tool === 'fog')
                   setPendingFogPoints([])
                   setFogCursor(null)
-                  setWallDrawing(false)
+                  setWallDrawing(tool === 'walls')
                   setWallStart(null)
                   setWallCursor(null)
                   setMeasureActive(false)
                   setMeasureLine(null)
                 }}
               >
-                {fogDrawing ? 'Drawing fog…' : 'Draw fog'}
-              </button>
-              <button
-                className={wallDrawing ? 'active' : undefined}
-                aria-pressed={wallDrawing}
-                onClick={() => {
-                  setWallDrawing((drawing) => !drawing)
-                  setWallStart(null)
-                  setWallCursor(null)
-                  setFogDrawing(false)
-                  setPendingFogPoints([])
-                  setFogCursor(null)
-                  setMeasureActive(false)
-                  setMeasureLine(null)
-                }}
-              >
-                {wallDrawing ? 'Drawing walls…' : 'Draw walls'}
-              </button>
+                <option value="">Draw…</option>
+                <option value="fog">Draw fog</option>
+                <option value="walls">Draw walls</option>
+              </select>
               {wallDrawing && <span className="fog-hint">Esc ends a wall, again leaves</span>}
               <button
                 className={scene.lightingEnabled ? 'active' : undefined}

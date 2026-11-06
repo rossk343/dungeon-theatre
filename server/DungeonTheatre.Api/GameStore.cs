@@ -272,27 +272,31 @@ public class GameStore(GameDbContext db)
     public async Task<bool> RemovePlacementAsync(string sceneId, string tokenId) =>
         await db.Placements.Where(p => p.SceneId == sceneId && p.TokenId == tokenId).ExecuteDeleteAsync() > 0;
 
-    public async Task<Token?> UpdateTokenAsync(string tokenId, string name, int hp, int speedFeet, int armorClass)
+    public record TokenHealthUpdate(Token Token, bool FoeSlain);
+
+    public async Task<TokenHealthUpdate?> UpdateTokenAsync(string tokenId, string name, int hp, int speedFeet, int armorClass)
     {
         name = name.Trim();
         if (name.Length is 0 or > 40 || !IsValidSpeed(speedFeet) || !IsValidArmorClass(armorClass)) return null;
         var entity = await db.Tokens.FindAsync(tokenId);
         if (entity is null) return null;
+        var wasAlive = entity.Hp > 0;
         entity.Name = name;
         entity.Hp = Math.Clamp(hp, 0, entity.MaxHp);
         entity.SpeedFeet = speedFeet;
         entity.ArmorClass = armorClass;
         await db.SaveChangesAsync();
-        return ToDto(entity);
+        return new TokenHealthUpdate(ToDto(entity), !entity.IsPlayer && wasAlive && entity.Hp == 0);
     }
 
-    public async Task<Token?> ApplyDamageAsync(string tokenId, int amount)
+    public async Task<TokenHealthUpdate?> ApplyDamageAsync(string tokenId, int amount)
     {
         var entity = await db.Tokens.FindAsync(tokenId);
         if (entity is null) return null;
+        var wasAlive = entity.Hp > 0;
         entity.Hp = Math.Clamp(entity.Hp - Math.Max(0, amount), 0, entity.MaxHp);
         await db.SaveChangesAsync();
-        return ToDto(entity);
+        return new TokenHealthUpdate(ToDto(entity), !entity.IsPlayer && wasAlive && entity.Hp == 0);
     }
 
     public async Task<Token?> UpdateTokenLightingAsync(string tokenId, int visionFeet, int lightFeet)

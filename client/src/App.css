@@ -94,9 +94,14 @@ aside.collapsed {
   font-size: 0.85rem;
 }
 
-.zoom-controls button.active {
+.zoom-controls button.active,
+.zoom-controls select.active {
   border-color: #e0b341;
   color: #f0ca69;
+}
+
+.mobile-reset-move {
+  display: none;
 }
 
 .fog-hint {
@@ -1135,6 +1140,25 @@ button.link {
   pointer-events: none;
 }
 
+.foe-slain {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  background: #351c1c;
+  border: 1px solid #c89145;
+  border-radius: 6px;
+  padding: 10px 20px;
+  color: #ffe4a8;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+.foe-slain-mobile {
+  display: none;
+}
+
 .signed-in {
   margin-left: auto;
   white-space: nowrap;
@@ -1223,6 +1247,36 @@ button.link {
   touch-action: none;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal {
+  width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  background: #1a1622;
+  border: 1px solid #8a659d;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.modal h2 {
+  margin: 0 0 8px;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .mobile-tabs {
   display: none;
 }
@@ -1232,6 +1286,20 @@ button.link {
 }
 
 @media (max-width: 700px) {
+  .mobile-reset-move {
+    display: inline-block;
+  }
+
+  .foe-slain-map {
+    display: none;
+  }
+
+  .foe-slain-mobile {
+    display: block;
+    position: fixed;
+    z-index: 51;
+  }
+
   .app > header {
     position: relative;
     padding-right: 44px;
@@ -1277,7 +1345,7 @@ button.link {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 4px;
-    margin-bottom: 8px;
+    margin: 8px 0;
   }
 
   .mobile-tabs button {

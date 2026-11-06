@@ -21,6 +21,9 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     {
         var roleGroup = IsGm ? GmGroup : PlayerGroup;
         await Groups.AddToGroupAsync(Context.ConnectionId, roleGroup);
+        if (IsGm)
+            foreach (var pending in PendingDamages.Values)
+                await Clients.Caller.SendAsync("DamagePending", pending);
         await base.OnConnectedAsync();
     }
 
@@ -146,16 +149,43 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
 
         if (isDamage && target is not null)
         {
-            var updated = await store.ApplyDamageAsync(target.Id, total);
-            if (updated is not null)
+            if (IsGm)
+                await ApplyDamageAndBroadcastAsync(target.Id, total);
+            else
             {
-                await Clients.Group(GmGroup).SendAsync("TokenUpdated", updated);
-                await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", updated.ForPlayerView());
-                await RemoveDefeatedNpcFromInitiativeAsync(updated);
+                // Player damage waits for the GM to accept it.
+                var pending = new PendingDamage(Guid.NewGuid().ToString("N"), result.Roller, target.Id, target.Name, total);
+                PendingDamages[pending.Id] = pending;
+                await Clients.Group(GmGroup).SendAsync("DamagePending", pending);
             }
         }
         return result;
     }
+
+    private async Task ApplyDamageAndBroadcastAsync(string tokenId, int amount)
+    {
+        var updated = await store.ApplyDamageAsync(tokenId, amount);
+        if (updated is null) return;
+        await Clients.Group(GmGroup).SendAsync("TokenUpdated", updated.Token);
+        await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", updated.Token.ForPlayerView());
+        await RemoveDefeatedNpcFromInitiativeAsync(updated.Token);
+        if (updated.FoeSlain) await Clients.Group(PlayerGroup).SendAsync("FoeSlain");
+    }
+
+    public async Task ResolveDamage(string id, bool accept)
+    {
+        RequireGm();
+        if (!PendingDamages.TryRemove(id, out var pending))
+        {
+            await Clients.Caller.SendAsync("DamageResolved", id);
+            return;
+        }
+        if (accept) await ApplyDamageAndBroadcastAsync(pending.TokenId, pending.Amount);
+        await Clients.Group(GmGroup).SendAsync("DamageResolved", id);
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, PendingDamage> PendingDamages = new();
+    public record PendingDamage(string Id, string Roller, string TokenId, string TokenName, int Amount);
 
     // A defeated NPC (0 HP) drops out of every scene's initiative order.
     private async Task RemoveDefeatedNpcFromInitiativeAsync(Token token)
@@ -319,14 +349,15 @@ public class GameHub(GameStore store, CombatStore combats) : Hub
     {
         if (!IsGm && !await store.IsPlayerTokenAsync(tokenId))
             throw new HubException("Players can only edit player tokens.");
-        var token = await store.UpdateTokenAsync(tokenId, name, hp, speedFeet, armorClass);
-        if (token is not null)
+        var updated = await store.UpdateTokenAsync(tokenId, name, hp, speedFeet, armorClass);
+        if (updated is not null)
         {
-            await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", token);
-            await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", token.ForPlayerView());
-            await RemoveDefeatedNpcFromInitiativeAsync(token);
+            await Clients.OthersInGroup(GmGroup).SendAsync("TokenUpdated", updated.Token);
+            await Clients.Group(PlayerGroup).SendAsync("TokenUpdated", updated.Token.ForPlayerView());
+            await RemoveDefeatedNpcFromInitiativeAsync(updated.Token);
+            if (updated.FoeSlain) await Clients.Group(PlayerGroup).SendAsync("FoeSlain");
         }
-        return token;
+        return updated?.Token;
     }
 
     public async Task<Token?> UpdateTokenLighting(string tokenId, int visionFeet, int lightFeet)
